@@ -374,9 +374,21 @@ const TopBar = ({ showSidebar, toggleSidebar }) => {
   const [loadingNotifications, setLoadingNotifications] = useState(true);
 
   // NEW STATE FOR ROLE DROPDOWN
-  const [selectedRole, setSelectedRole] = useState("Student");
+  const [selectedRole, setSelectedRole] = useState(localStorage.getItem("userRole") || "Student");
 
   const userEmail = localStorage.getItem("profileEmail");
+
+  // =============================
+  // ROLE CHANGE HANDLER
+  // =============================
+  const handleRoleChange = (role) => {
+    setSelectedRole(role);
+    localStorage.setItem("userRole", role);
+
+    if (role === "Student") navigate("/dashboard");
+    if (role === "Teacher") navigate("/teacher/dashboard");
+    if (role === "Parent") navigate("/parent/dashboard");
+  };
 
   // ====================================
   // LOAD PROFILE FROM BACKEND
@@ -507,20 +519,20 @@ const TopBar = ({ showSidebar, toggleSidebar }) => {
           {/* RIGHT SIDE */}
           <div className="d-flex align-items-center gap-3">
 
-            {/* ⭐ NEW ROLE DROPDOWN (Left side of bell) */}
+            {/* ⭐ ROLE DROPDOWN */}
             <Dropdown>
               <Dropdown.Toggle variant="outline-secondary" size="sm">
                 {selectedRole}
               </Dropdown.Toggle>
 
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => setSelectedRole("Student")}>
+                <Dropdown.Item onClick={() => handleRoleChange("Student")}>
                   Student
                 </Dropdown.Item>
-                <Dropdown.Item onClick={() => setSelectedRole("Teacher")}>
+                <Dropdown.Item onClick={() => handleRoleChange("Teacher")}>
                   Teacher
                 </Dropdown.Item>
-                <Dropdown.Item onClick={() => setSelectedRole("Parent")}>
+                <Dropdown.Item onClick={() => handleRoleChange("Parent")}>
                   Parent
                 </Dropdown.Item>
               </Dropdown.Menu>
