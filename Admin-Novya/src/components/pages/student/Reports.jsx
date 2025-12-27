@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Card, Row, Col, Button, Form, Table } from "react-bootstrap";
+import React, { useState, useEffect } from "react";
+import { Card, Row, Col, Button, Form, Table, Spinner, Alert } from "react-bootstrap";
 import { Bar } from "react-chartjs-2";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -11,57 +11,60 @@ import {
   Tooltip,
   Legend,
 } from "chart.js";
+import { getReportsData } from "../../../api";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
-
-// ---------------- UPDATED MOCK DATA ----------------
-const CLASS_DATA = {
-  "Class 7": [
-    { id: "C7S01", name: "Ravi", dob: "12-03-2010", attendance: "88%" },
-    { id: "C7S02", name: "Aarav", dob: "21-04-2010", attendance: "91%" },
-  ],
-  "Class 8": [
-    { id: "C8S01", name: "Teja", dob: "11-02-2009", attendance: "94%" },
-    { id: "C8S02", name: "Swathi", dob: "09-05-2009", attendance: "89%" },
-  ],
-  "Class 9": [
-    { id: "C9S01", name: "Meghana", dob: "17-07-2008", attendance: "95%" },
-    { id: "C9S02", name: "John", dob: "03-11-2008", attendance: "87%" },
-  ],
-  "Class 10": [
-    { id: "C10S01", name: "Divya", dob: "15-01-2007", attendance: "93%" },
-    { id: "C10S02", name: "Ajay", dob: "28-08-2007", attendance: "90%" },
-  ],
-};
-
-// ---------------- UPDATED SUBJECT MARKS ----------------
-const MARKS = {
-  C7S01: [
-    { subject: "Math", marks: 82, grade: "A" },
-    { subject: "Science", marks: 90, grade: "A+" },
-    { subject: "English", marks: 76, grade: "B+" },
-    { subject: "History", marks: 84, grade: "A" },
-    { subject: "Chemistry", marks: 88, grade: "A" },
-    { subject: "Computer Science", marks: 92, grade: "A+" },
-  ],
-  C7S02: [
-    { subject: "Math", marks: 88, grade: "A" },
-    { subject: "Science", marks: 92, grade: "A+" },
-    { subject: "English", marks: 81, grade: "A" },
-    { subject: "History", marks: 79, grade: "B+" },
-    { subject: "Chemistry", marks: 85, grade: "A" },
-    { subject: "Computer Science", marks: 90, grade: "A+" },
-  ],
-  // Add more students if needed
-};
 
 const Reports = () => {
   const [selectedClass, setSelectedClass] = useState("");
   const [selectedStudent, setSelectedStudent] = useState("");
+  const [classData, setClassData] = useState({});
+  const [marksData, setMarksData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const studentsInClass = selectedClass ? CLASS_DATA[selectedClass] : [];
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get admin email from localStorage
+        const adminEmail = localStorage.getItem("profileEmail");
+        if (!adminEmail) {
+          setError("Admin email not found. Please login again.");
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getReportsData(adminEmail);
+        
+        if (result.error) {
+          setError(result.error);
+          // Fallback to empty data on error
+          setClassData({});
+          setMarksData({});
+        } else {
+          setClassData(result.classes || {});
+          setMarksData(result.marks || {});
+        }
+      } catch (err) {
+        console.error("Error loading reports data:", err);
+        setError("Failed to load reports data");
+        setClassData({});
+        setMarksData({});
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const studentsInClass = selectedClass ? (classData[selectedClass] || []) : [];
   const studentInfo = studentsInClass.find((s) => s.id === selectedStudent);
-  const studentMarks = MARKS[selectedStudent] || [];
+  const studentMarks = marksData[selectedStudent] || [];
 
   // ---------------- UPDATED CHART ----------------
   const chartData = {
@@ -110,7 +113,7 @@ const Reports = () => {
               }}
             >
               <option value="">-- Select Class --</option>
-              {Object.keys(CLASS_DATA).map((cls) => (
+              {Object.keys(classData).map((cls) => (
                 <option key={cls}>{cls}</option>
               ))}
             </Form.Select>

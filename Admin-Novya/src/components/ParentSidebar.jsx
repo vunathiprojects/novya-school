@@ -21,21 +21,38 @@ const ParentSidebar = ({ showSidebar, darkMode, setShowSidebar }) => {
   // ✅ MENU LIST (FIXED)
   const menuItems = [
     { name: "Overview", icon: <FaTachometerAlt />, path: "" }, // ✅ FIX
+    { name: "Parent Registration", icon: <FaUserPlus />, path: "registration" },
     { name: "Payments", icon: <FaMoneyBillWave />, path: "payments" },
     { name: "Support", icon: <FaRegEnvelope />, path: "support" },
-    //{ name: "Parent Registration", icon: <FaUserPlus />, path: "registration" },
   ];
 
   // ✅ Active highlight
   useEffect(() => {
-    const currentPath = location.pathname.split("/")[2] || "";
+    const pathSegments = location.pathname.split("/").filter(Boolean);
+    let currentPath = "";
+    
+    // Check if we're on parent-registration page
+    if (pathSegments.includes("parent-registration")) {
+      currentPath = "registration";
+    } else if (pathSegments.includes("parent")) {
+      // Get the path after "parent"
+      const parentIndex = pathSegments.indexOf("parent");
+      currentPath = pathSegments[parentIndex + 1] || "";
+    }
+    
     const currentItem = menuItems.find((item) => item.path === currentPath);
     setActiveItem(currentItem ? currentItem.name : "Overview");
   }, [location.pathname]);
 
   // ✅ Navigation
   const handleMenuItemClick = (item) => {
-    navigate(item.path ? `/parent/${item.path}` : `/parent`);
+    if (item.name === "Parent Registration") {
+      navigate("/dashboard/parent-registration");
+    } else if (item.name === "Overview") {
+      navigate("/dashboard/parent/");
+    } else {
+      navigate(`/dashboard/parent/${item.path}`);
+    }
 
     if (window.innerWidth <= 992) setShowSidebar(false);
   };

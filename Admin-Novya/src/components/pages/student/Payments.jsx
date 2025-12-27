@@ -14,6 +14,8 @@ import {
   Nav,
   Collapse,
   Modal,
+  Spinner,
+  Alert,
 } from "react-bootstrap";
 import {
   FaSearch,
@@ -28,50 +30,7 @@ import {
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-
-// 🔹 Sample Static Data
-const sampleData = [
-  {
-    id: 101,
-    transactionId: "TXN123456",
-    email: "john.doe@example.com",
-    phone: "+91 9876543210",
-    class: "10th",
-    status: "Success",
-    date: "2025-07-25",
-    amount: 3600,
-  },
-  {
-    id: 102,
-    transactionId: "TXN123457",
-    email: "priya.sharma@example.com",
-    phone: "+91 8765432109",
-    class: "8th",
-    status: "Pending",
-    date: "2025-07-20",
-    amount: 3600,
-  },
-  {
-    id: 103,
-    transactionId: "TXN123458",
-    email: "rahul.singh@example.com",
-    phone: "+91 7654321098",
-    class: "7th",
-    status: "Failed",
-    date: "2025-07-22",
-    amount: 3600,
-  },
-  {
-    id: 104,
-    transactionId: "TXN123459",
-    email: "aarav.mehta@example.com",
-    phone: "+91 6543210987",
-    class: "9th",
-    status: "Success",
-    date: "2025-07-18",
-    amount: 3600,
-  },
-];
+import { getPaymentsData } from "../../../api";
 
 // ✨ Animation Style
 const fadeInStyle = {
@@ -101,7 +60,10 @@ if (typeof document !== "undefined") {
 }
 
 const Payments = () => {
-  const [payments, setPayments] = useState(sampleData);
+  const [payments, setPayments] = useState([]);
+  const [summary, setSummary] = useState({ totalRevenue: 0, pending: 0, failed: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
     class: "",
     status: "",
@@ -115,6 +77,35 @@ const Payments = () => {
   const [expandedPayment, setExpandedPayment] = useState(null);
   const [exportModal, setExportModal] = useState(false);
 
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await getPaymentsData(filters);
+        
+        if (result.error) {
+          setError(result.error);
+          setPayments([]);
+          setSummary({ totalRevenue: 0, pending: 0, failed: 0 });
+        } else {
+          setPayments(result.payments || []);
+          setSummary(result.summary || { totalRevenue: 0, pending: 0, failed: 0 });
+        }
+      } catch (err) {
+        console.error("Error loading payments data:", err);
+        setError("Failed to load payments data");
+        setPayments([]);
+        setSummary({ totalRevenue: 0, pending: 0, failed: 0 });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [filters.class, filters.search, filters.date]); // Reload when filters change
+
   // Handle window resize for responsiveness
   useEffect(() => {
     const handleResize = () => {
@@ -124,9 +115,9 @@ const Payments = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // 🔹 Handle Filters
+  // 🔹 Handle Filters (now client-side filtering on already filtered backend data)
   const handleFilter = () => {
-    let filtered = [...sampleData];
+    let filtered = [...payments];
 
     if (filters.class)
       filtered = filtered.filter((p) =>
@@ -154,26 +145,34 @@ const Payments = () => {
             .includes(filters.search.toLowerCase())
       );
 
-    setPayments(filtered);
+    // Additional client-side filtering if needed
+    if (filters.status) {
+      filtered = filtered.filter((p) => p.status === filters.status);
+    }
+    if (filters.from) {
+      filtered = filtered.filter((p) => new Date(p.date) >= new Date(filters.from));
+    }
+    if (filters.to) {
+      filtered = filtered.filter((p) => new Date(p.date) <= new Date(filters.to));
+    }
+
+    return filtered;
   };
 
-  useEffect(() => {
-    handleFilter();
-    // eslint-disable-next-line
-  }, [filters]);
+  const filteredPayments = handleFilter();
 
-  // 🔹 AI Insights (Summary Stats)
-  const totalRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
-  const successCount = payments.filter((p) => p.status === "Success").length;
-  const pendingCount = payments.filter((p) => p.status === "Pending").length;
-  const failedCount = payments.filter((p) => p.status === "Failed").length;
-  const successRate = payments.length
-    ? Math.round((successCount / payments.length) * 100)
+  // 🔹 AI Insights (Summary Stats) - Use backend summary or calculate from filtered
+  const totalRevenue = summary.totalRevenue || filteredPayments.reduce((sum, p) => sum + (p.status === "Success" ? p.amount : 0), 0);
+  const successCount = filteredPayments.filter((p) => p.status === "Success").length;
+  const pendingCount = summary.pending || filteredPayments.filter((p) => p.status === "Pending").length;
+  const failedCount = summary.failed || filteredPayments.filter((p) => p.status === "Failed").length;
+  const successRate = filteredPayments.length
+    ? Math.round((successCount / filteredPayments.length) * 100)
     : 0;
 
   // 📂 Export Functions
   const exportToExcel = () => {
-    const worksheet = XLSX.utils.json_to_sheet(payments);
+    const worksheet = XLSX.utils.json_to_sheet(filteredPayments);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Payments");
     XLSX.writeFile(workbook, "payments_report.xlsx");
@@ -472,7 +471,7 @@ const Payments = () => {
           
           {isMobile ? (
             <div>
-              {payments.length === 0 ? (
+              {filteredPayments.length === 0 ? (
                 <div className="text-center p-4">⚠️ No records found</div>
               ) : (
                 renderPaymentCards()
@@ -494,12 +493,12 @@ const Payments = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.length === 0 ? (
+                  {filteredPayments.length === 0 ? (
                     <tr>
                       <td colSpan="8">⚠️ No records found</td>
                     </tr>
                   ) : (
-                    payments.map((item, idx) => (
+                    filteredPayments.map((item, idx) => (
                       <tr key={item.id}>
                         <td>{idx + 1}</td>
                         <td>{item.transactionId}</td>

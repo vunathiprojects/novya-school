@@ -331,7 +331,7 @@
 
 
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   Row,
@@ -340,6 +340,8 @@ import {
   Button,
   Table,
   Badge,
+  Spinner,
+  Alert,
 } from "react-bootstrap";
 import { Bar } from "react-chartjs-2";
 import {
@@ -352,36 +354,9 @@ import {
 } from "chart.js";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { getAttendanceData } from "../../../api";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend);
-
-// -------------------- Mock Data --------------------
-const CLASSES = ["Class 7", "Class 8", "Class 9", "Class 10"];
-
-const STUDENT_DATA = {
-  "Class 7": [
-    { id: "C7S01", name: "Ravi", present: 18, absent: 2 },
-    { id: "C7S02", name: "Meghana", present: 19, absent: 1 },
-    { id: "C7S03", name: "Teja", present: 15, absent: 5 },
-    { id: "C7S04", name: "Aarav", present: 20, absent: 0 },
-  ],
-  "Class 8": [
-    { id: "C8S01", name: "Harsha", present: 16, absent: 4 },
-    { id: "C8S02", name: "Ritu", present: 18, absent: 2 },
-    { id: "C8S03", name: "Anita", present: 20, absent: 0 },
-    { id: "C8S04", name: "Sanjay", present: 17, absent: 3 },
-  ],
-  "Class 9": [
-    { id: "C9S01", name: "Tarun", present: 19, absent: 1 },
-    { id: "C9S02", name: "Deepak", present: 14, absent: 6 },
-    { id: "C9S03", name: "Swathi", present: 18, absent: 2 },
-    { id: "C9S04", name: "Pranay", present: 16, absent: 4 },
-  ],
-  "Class 10": [
-    { id: "C10S01", name: "Akhil", present: 20, absent: 0 },
-    { id: "C10S02", name: "John", present: 19, absent: 1 },
-  ],
-};
 
 // -------------------- Utilities --------------------
 const calcSummary = (rows) => {
@@ -400,23 +375,74 @@ const statusBadge = (pct) => {
 
 // -------------------- Component --------------------
 const Attendance = () => {
-  const [selectedClass, setSelectedClass] = useState(CLASSES[0]);
+  const [studentData, setStudentData] = useState({});
+  const [teacherData, setTeacherData] = useState([]);
+  const [classes, setClasses] = useState([]);
+  const [selectedClass, setSelectedClass] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const students = STUDENT_DATA[selectedClass];
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get admin email from localStorage
+        const adminEmail = localStorage.getItem("profileEmail");
+        if (!adminEmail) {
+          setError("Admin email not found. Please login again.");
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getAttendanceData(adminEmail);
+        
+        if (result.error) {
+          setError(result.error);
+          setStudentData({});
+          setTeacherData([]);
+          setClasses([]);
+        } else {
+          setStudentData(result.students || {});
+          setTeacherData(result.teachers || []);
+          setClasses(result.classes || []);
+          if (result.classes && result.classes.length > 0) {
+            setSelectedClass(result.classes[0]);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading attendance data:", err);
+        setError("Failed to load attendance data");
+        setStudentData({});
+        setTeacherData([]);
+        setClasses([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const students = studentData[selectedClass] || [];
   const studentSummary = calcSummary(students);
 
   const CHART_COLOR = "#2a9d8f";
 
   // Class-wise student graph
-  const studentClassAvg = CLASSES.map((cls) => {
-    const rows = STUDENT_DATA[cls];
+  const studentClassAvg = classes.map((cls) => {
+    const rows = studentData[cls] || [];
+    if (rows.length === 0) return 0;
     const totalPresent = rows.reduce((a, b) => a + b.present, 0);
     const totalAbsent = rows.reduce((a, b) => a + b.absent, 0);
-    return Math.round((totalPresent / (totalPresent + totalAbsent)) * 100);
+    const total = totalPresent + totalAbsent;
+    return total > 0 ? Math.round((totalPresent / total) * 100) : 0;
   });
 
   const studentChart = {
-    labels: CLASSES,
+    labels: classes,
     datasets: [
       {
         label: "Class Avg Attendance %",
@@ -444,7 +470,7 @@ const Attendance = () => {
           <Row>
             <Col md={4}>
               <Form.Select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)}>
-                {CLASSES.map((c) => (
+                {classes.map((c) => (
                   <option key={c}>{c}</option>
                 ))}
               </Form.Select>

@@ -274,30 +274,48 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { v4 as uuidv4 } from 'uuid';
+import { getTicketsData } from "../../../api";
+import { Spinner } from 'react-bootstrap';
 
 const Tickets = () => {
   const [tickets, setTickets] = useState([]);
   const [contactRequests, setContactRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [alert, setAlert] = useState({ show: false, message: '', variant: '' });
 
   useEffect(() => {
-    // Fetch Django contact requests
-    fetch("http://localhost:8001/api/core/contact/list/")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) setContactRequests(data);
-      })
-      .catch(err => console.error("Error fetching contact requests:", err));
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const result = await getTicketsData();
+        
+        if (result.error) {
+          setError(result.error);
+          setTickets([]);
+          setContactRequests([]);
+        } else {
+          setTickets(result.tickets || []);
+          setContactRequests(result.contactRequests || []);
+        }
+      } catch (err) {
+        console.error("Error loading tickets data:", err);
+        setError("Failed to load tickets data");
+        setTickets([]);
+        setContactRequests([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    // Load tickets from local storage
-    const dataLocal = localStorage.getItem('tickets');
-    if (dataLocal) setTickets(JSON.parse(dataLocal));
+    loadData();
   }, []);
 
   const saveTickets = (data) => {
     setTickets(data);
-    localStorage.setItem('tickets', JSON.stringify(data));
+    // Note: Saving to localStorage is kept for backward compatibility but data comes from backend
   };
 
   const getSlaBadge = (slaDeadline) => {
@@ -332,6 +350,26 @@ const Tickets = () => {
     String(ticket.status || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     String(ticket.id || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="text-center p-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-2">Loading tickets data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-3">
+        <Alert variant="warning">
+          <Alert.Heading>Unable to load data</Alert.Heading>
+          <p>{error}</p>
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '1rem', backgroundColor: '#f8f9fa', minHeight: '100vh' }}>

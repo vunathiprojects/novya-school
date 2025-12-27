@@ -7,6 +7,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import TeacherSidebar from './TeacherSidebar';
+import ParentSidebar from './ParentSidebar';
 
 // Student Pages
 import Overview from './pages/student/Overview';
@@ -16,6 +17,12 @@ import Tickets from './pages/student/Tickets';
 //import Registrations from './pages/student/Registrations';
 import Attendance from './pages/student/Attendance';
 import Reports from './pages/student/Reports';
+import UserManagement from './pages/student/UserManagement';
+// Teacher Pages
+import TeacherRegistration from './pages/teacher/TeacherRegistration';
+// Parent Pages
+import ParentRegistration from './pages/parent/ParentRegistration';
+import ParentDashboard from './pages/parent/ParentDashboard';
 
 const AdminDashboard = () => {
   const [darkMode, setDarkMode] = useState(false);
@@ -75,7 +82,11 @@ const AdminDashboard = () => {
       )}
 
       {userRole === "Parent" && (
-        <div className="p-3">Parent Sidebar Coming Soon</div>
+        <ParentSidebar
+          showSidebar={showSidebar}
+          darkMode={darkMode}
+          setShowSidebar={setShowSidebar}
+        />
       )}
 
       {/* ⭐ MAIN CONTENT AREA */}
@@ -87,12 +98,20 @@ const AdminDashboard = () => {
 
             {/* Student Feature Routes */}
             <Route path="overview" element={<Overview />} />
+            <Route path="user-management" element={<UserManagement />} />
             <Route path="payments" element={<Payments />} />
             <Route path="progress" element={<Progress />} />
             <Route path="tickets" element={<Tickets />} />
             {/* <Route path="registrations" element={<Registrations />} /> */}
             <Route path="attendance" element={<Attendance />} />
             <Route path="reports" element={<Reports />} />
+            
+            {/* Teacher Feature Routes */}
+            <Route path="teacher-registration" element={<TeacherRegistration />} />
+
+            {/* Parent Feature Routes - parent-registration must come before parent/* */}
+            <Route path="parent-registration" element={<ParentRegistration />} />
+            <Route path="parent/*" element={<ParentDashboard />} />
 
             {/* Fallback */}
             <Route path="*" element={<Navigate to="overview" replace />} />

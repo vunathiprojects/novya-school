@@ -9,10 +9,18 @@ import {
   Row,
   Col,
   Dropdown,
+  Spinner,
+  Alert,
 } from "react-bootstrap";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import {
+  getTeacherRegistrations,
+  approveTeacher,
+  rejectTeacher,
+  blockTeacher,
+} from "../../../api";
 
 const TeacherRegistrations = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -24,90 +32,50 @@ const TeacherRegistrations = () => {
   const [teachers, setTeachers] = useState([]);
   const [upcomingTeachers, setUpcomingTeachers] = useState([]);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [summary, setSummary] = useState({ newTeachers: 0, totalTeachers: 0, upcomingTeachers: 0 });
 
-  // ------------------------------------------------
-  // Initial sample data (replace with API calls later)
-  // ------------------------------------------------
+  // Load data from backend
   useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const adminEmail = localStorage.getItem("profileEmail");
+        if (!adminEmail) {
+          setError("Admin email not found. Please login again.");
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getTeacherRegistrations(adminEmail);
+        
+        if (result.error) {
+          setError(result.error);
+          setTeachers([]);
+          setUpcomingTeachers([]);
+        } else {
+          setTeachers(result.teachers || []);
+          setUpcomingTeachers(result.upcomingTeachers || []);
+          setSummary(result.summary || { newTeachers: 0, totalTeachers: 0, upcomingTeachers: 0 });
+        }
+      } catch (err) {
+        console.error("Error loading teacher registrations:", err);
+        setError("Failed to load teacher registrations");
+        setTeachers([]);
+        setUpcomingTeachers([]);
+      } finally {
+        setLoading(false);
+        setTimeout(() => setFadeIn(true), 100);
+      }
+    };
+
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
-    setTimeout(() => setFadeIn(true), 100);
-
-    const sampleTeachers = [
-      {
-        regId: "T001",
-        firstName: "Sophia",
-        lastName: "Ray",
-        phone: "9876543210",
-        email: "sophia@example.com",
-        username: "sophiateacher",
-        subject: "Mathematics",
-        status: "Pending",
-        locked: false,
-        createdAt: new Date().toISOString(),
-        registrationDate: "10/12/2025"
-      },
-      {
-        regId: "T002",
-        firstName: "Amit",
-        lastName: "Verma",
-        phone: "9123456780",
-        email: "amit@example.com",
-        username: "amitv",
-        subject: "Science",
-        status: "Approved",
-        locked: false,
-        createdAt: new Date(
-          new Date().setDate(new Date().getDate() - 15)
-        ).toISOString(),
-        registrationDate: "05/12/2025"
-      },
-      {
-        regId: "T003",
-        firstName: "Reena",
-        lastName: "Ghosh",
-        phone: "9871234567",
-        email: "reena@example.com",
-        username: "reenag",
-        subject: "English",
-        status: "Rejected",
-        locked: false,
-        createdAt: new Date(
-          new Date().setDate(new Date().getDate() - 5)
-        ).toISOString(),
-        registrationDate: "28/11/2025"
-      },
-    ];
-
-    const sampleUpcoming = [
-      {
-        regId: "UT001",
-        firstName: "Karthik",
-        lastName: "Reddy",
-        phone: "9988776655",
-        email: "karthik@example.com",
-        username: "karthikr",
-        subject: "Social Studies",
-        registrationDate: "18/12/2025",
-        status: "Upcoming",
-        locked: false,
-      },
-      {
-        regId: "UT002",
-        firstName: "Neha",
-        lastName: "Kulkarni",
-        phone: "7766554433",
-        email: "neha@example.com",
-        username: "nehak",
-        subject: "Hindi",
-        registrationDate: "22/12/2025",
-        status: "Upcoming",
-        locked: false,
-      },
-    ];
-
-    setTeachers(sampleTeachers);
-    setUpcomingTeachers(sampleUpcoming);
+    
+    loadData();
 
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -152,20 +120,70 @@ const TeacherRegistrations = () => {
     }
   };
 
-  const handleStatusChange = (regId, newStatus) => {
-    setTeachers((prev) =>
-      prev.map((t) =>
-        t.regId === regId ? { ...t, status: newStatus, locked: newStatus === "Rejected" ? false : t.locked } : t
-      )
-    );
+  const handleStatusChange = async (teacherId, regId, newStatus) => {
+    try {
+      const adminEmail = localStorage.getItem("profileEmail");
+      if (!adminEmail) {
+        alert("Admin email not found. Please login again.");
+        return;
+      }
+
+      let result;
+      if (newStatus === "Approved") {
+        result = await approveTeacher(teacherId, adminEmail);
+      } else if (newStatus === "Rejected") {
+        result = await rejectTeacher(teacherId, adminEmail);
+      }
+
+      if (result.error) {
+        alert(result.error);
+        return;
+      }
+
+      // Update local state
+      setTeachers((prev) =>
+        prev.map((t) =>
+          t.regId === regId ? { ...t, status: newStatus, locked: newStatus === "Rejected" ? false : t.locked } : t
+        )
+      );
+
+      // Reload data to get updated summary
+      const updated = await getTeacherRegistrations(adminEmail);
+      if (!updated.error) {
+        setSummary(updated.summary || summary);
+      }
+    } catch (err) {
+      console.error("Error changing status:", err);
+      alert("Failed to update teacher status");
+    }
   };
 
-  const handleToggleLock = (regId) => {
-    setTeachers((prev) =>
-      prev.map((t) =>
-        t.regId === regId ? { ...t, locked: !t.locked } : t
-      )
-    );
+  const handleToggleLock = async (teacherId, regId, currentLocked) => {
+    try {
+      const adminEmail = localStorage.getItem("profileEmail");
+      if (!adminEmail) {
+        alert("Admin email not found. Please login again.");
+        return;
+      }
+
+      const action = currentLocked ? "unblock" : "block";
+      const result = await blockTeacher(teacherId, action, adminEmail);
+
+      if (result.error) {
+        alert(result.error);
+        return;
+      }
+
+      // Update local state
+      setTeachers((prev) =>
+        prev.map((t) =>
+          t.regId === regId ? { ...t, locked: !currentLocked, status: result.status ? result.status.capitalize() : t.status } : t
+        )
+      );
+    } catch (err) {
+      console.error("Error toggling lock:", err);
+      alert("Failed to update teacher lock status");
+    }
   };
 
   // View modal
@@ -352,10 +370,14 @@ const TeacherRegistrations = () => {
                         <Button variant="outline-primary" size="sm" onClick={() => handleView(t)}>View</Button>
                         {!isUpcoming ? (
                           <>
-                            <Button variant="success" size="sm" onClick={() => handleStatusChange(t.regId, "Approved")}>Approve</Button>
-                            <Button variant="danger" size="sm" onClick={() => handleStatusChange(t.regId, "Rejected")}>Reject</Button>
-                            <Button variant={t.locked ? "warning" : "dark"} size="sm" onClick={() => handleToggleLock(t.regId)}>
-                              {t.locked ? "Unlock" : "Lock"}
+                            {t.status !== "Approved" && (
+                              <Button variant="success" size="sm" onClick={() => handleStatusChange(t.teacher_id, t.regId, "Approved")}>Approve</Button>
+                            )}
+                            {t.status !== "Rejected" && t.status !== "Approved" && (
+                              <Button variant="danger" size="sm" onClick={() => handleStatusChange(t.teacher_id, t.regId, "Rejected")}>Reject</Button>
+                            )}
+                            <Button variant={t.locked ? "warning" : "dark"} size="sm" onClick={() => handleToggleLock(t.teacher_id, t.regId, t.locked)}>
+                              {t.locked ? "Unblock" : "Block"}
                             </Button>
                           </>
                         ) : (
@@ -382,6 +404,26 @@ const TeacherRegistrations = () => {
   // -------------------------
   // Render
   // -------------------------
+  if (loading) {
+    return (
+      <div className="text-center p-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-2">Loading teacher registrations...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-3">
+        <Alert variant="warning">
+          <Alert.Heading>Error</Alert.Heading>
+          <p>{error}</p>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
     <>
       {/* Top stat cards */}
@@ -389,21 +431,21 @@ const TeacherRegistrations = () => {
         <Col md={4} className="mb-3">
           <Card className="shadow-sm text-center p-3">
             <h5>🆕 New Teachers</h5>
-            <h3>{newTeachers.length}</h3>
+            <h3>{summary.newTeachers}</h3>
           </Card>
         </Col>
 
         <Col md={4} className="mb-3">
           <Card className="shadow-sm text-center p-3">
             <h5>👨‍🏫 Total Teachers</h5>
-            <h3>{teachers.length}</h3>
+            <h3>{summary.totalTeachers}</h3>
           </Card>
         </Col>
 
         <Col md={4} className="mb-3">
           <Card className="shadow-sm text-center p-3">
             <h5>📅 Upcoming Teachers</h5>
-            <h3>{upcomingTeachers.length}</h3>
+            <h3>{summary.upcomingTeachers}</h3>
           </Card>
         </Col>
       </Row>

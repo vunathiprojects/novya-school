@@ -27,7 +27,7 @@
 // import { useNavigate } from 'react-router-dom';
 // import axios from 'axios';
 
-// const API_BASE = "http://127.0.0.1:8000/api";
+// const API_BASE = "http://127.0.0.1:8002/api";
 
 // const TopBar = ({ showSidebar, toggleSidebar }) => {
 //   const navigate = useNavigate();
@@ -351,7 +351,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
-const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "http://127.0.0.1:8002/api";
 
 const TopBar = ({ showSidebar, toggleSidebar }) => {
   const navigate = useNavigate();
@@ -385,35 +385,70 @@ const TopBar = ({ showSidebar, toggleSidebar }) => {
     setSelectedRole(role);
     localStorage.setItem("userRole", role);
 
-    if (role === "Student") navigate("/dashboard");
-    if (role === "Teacher") navigate("/teacher/dashboard");
-    if (role === "Parent") navigate("/parent/dashboard");
+    // Navigate to appropriate dashboard view
+    // All views are in the same dashboard, just different sections
+    if (role === "Student") {
+      navigate("/dashboard/overview");
+    } else if (role === "Teacher") {
+      navigate("/dashboard/teacher-registration"); // Show teacher registration page
+    } else if (role === "Parent") {
+      navigate("/dashboard/parent"); // Show parent overview dashboard
+    }
   };
 
   // ====================================
-  // LOAD PROFILE FROM BACKEND
+  // LOAD PROFILE FROM BACKEND (DYNAMIC)
   // ====================================
   const loadProfile = async () => {
-    if (!userEmail) return;
+    if (!userEmail) {
+      // Fallback to localStorage if no email
+      setFullName(localStorage.getItem("fullName") || "");
+      setPhone(localStorage.getItem("phone") || "");
+      setSchoolName(localStorage.getItem("schoolName") || "");
+      setSchoolAddress(localStorage.getItem("schoolAddress") || "");
+      setProfileEmail("");
+      return;
+    }
 
     try {
+      // Always try to load from backend first (DYNAMIC)
       const res = await axios.get(`${API_BASE}/profile/${userEmail}/`);
       const p = res.data;
 
+      // Update state with backend data
       setFullName(p.full_name || "");
       setPhone(p.phone || "");
       setSchoolName(p.school_name || "");
       setSchoolAddress(p.school_address || "");
       setProfileEmail(userEmail);
 
+      // Sync with localStorage for backward compatibility (optional cache)
+      if (p.full_name) localStorage.setItem("fullName", p.full_name);
+      if (p.phone) localStorage.setItem("phone", p.phone);
+      if (p.school_name) localStorage.setItem("schoolName", p.school_name);
+      if (p.school_address) localStorage.setItem("schoolAddress", p.school_address);
+
     } catch (error) {
       console.error("Profile load error:", error);
+      // Fallback to localStorage if backend fails (graceful degradation)
+      // This ensures UI still works even if backend is temporarily unavailable
+      const fallbackName = localStorage.getItem("fullName") || "";
+      const fallbackPhone = localStorage.getItem("phone") || "";
+      const fallbackSchool = localStorage.getItem("schoolName") || "";
+      const fallbackAddress = localStorage.getItem("schoolAddress") || "";
+      
+      setFullName(fallbackName);
+      setPhone(fallbackPhone);
+      setSchoolName(fallbackSchool);
+      setSchoolAddress(fallbackAddress);
+      setProfileEmail(userEmail);
     }
   };
 
   useEffect(() => {
     loadProfile();
-  }, []);
+    // Note: We refresh profile when modal opens, not on interval to avoid unnecessary requests
+  }, [userEmail]); // Reload when userEmail changes
 
   // ====================================
   // VALIDATE
@@ -450,16 +485,28 @@ const TopBar = ({ showSidebar, toggleSidebar }) => {
       });
 
       if (res.data.message) {
+        // Update localStorage (cache for backward compatibility)
         localStorage.setItem("fullName", fullName);
         localStorage.setItem("phone", phone);
         localStorage.setItem("schoolName", schoolName);
         localStorage.setItem("schoolAddress", schoolAddress);
 
+        // Close modal and reload profile data from backend to ensure UI is in sync with database
         setShowProfileModal(false);
+        // Reload profile from backend to get the latest data (DYNAMIC)
+        await loadProfile();
+        
+        // Show success message
+        console.log("Profile updated successfully!");
+      } else {
+        console.error("Profile update failed:", res.data.error);
+        alert(res.data.error || "Failed to update profile");
       }
 
     } catch (error) {
       console.error("Profile update error:", error);
+      const errorMessage = error.response?.data?.error || error.response?.data?.detail || "Failed to update profile. Please try again.";
+      alert(errorMessage);
     }
   };
 
@@ -560,7 +607,10 @@ const TopBar = ({ showSidebar, toggleSidebar }) => {
               </Dropdown.Toggle>
 
               <Dropdown.Menu>
-                <Dropdown.Item onClick={() => setShowProfileModal(true)}>
+                <Dropdown.Item onClick={async () => {
+                  await loadProfile(); // Reload profile data before opening modal
+                  setShowProfileModal(true);
+                }}>
                   <FaEdit className="me-2" /> View / Edit Profile
                 </Dropdown.Item>
 

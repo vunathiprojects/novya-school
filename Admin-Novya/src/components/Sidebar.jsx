@@ -25,6 +25,7 @@ const Sidebar = ({ showSidebar, darkMode, setShowSidebar }) => {
   // menu items including new Attendance & Reports
   const menuItems = [
     { name: "Overview", icon: <FaTachometerAlt />, path: "overview" },
+    { name: "User Management", icon: <FaUserPlus />, path: "user-management" },
     { name: "Payments and Subscription", icon: <FaMoneyBill />, path: "payments" },
     { name: "Progress", icon: <FaChartLine />, path: "progress" },
     { name: "Support and Tickets", icon: <FaTicketAlt />, path: "tickets" },

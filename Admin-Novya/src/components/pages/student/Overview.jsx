@@ -10,6 +10,7 @@ import {
   Nav,
   Collapse,
   Button,
+  Spinner,
 } from "react-bootstrap";
 
 import {
@@ -31,6 +32,7 @@ import {
   Legend,
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
+import { getOverviewData } from "../../../api";
 
 Chart.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -181,39 +183,76 @@ const Overview = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [expandedRegistration, setExpandedRegistration] = useState(null);
+  const [stats, setStats] = useState({
+    totalStudents: 0,
+    totalParents: 0,
+    totalTeachers: 0,
+    totalClasses: 0,
+    attendanceRate: 0,
+  });
+  const [classPerformanceData, setClassPerformanceData] = useState({
+    labels: [],
+    datasets: [{ label: "Average Score", data: [], backgroundColor: "#2a9d8f" }],
+  });
+  const [registrations, setRegistrations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get admin email from localStorage
+        const adminEmail = localStorage.getItem("profileEmail");
+        
+        if (!adminEmail) {
+          setError("Admin email not found. Please login again.");
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getOverviewData(adminEmail);
+        
+        if (result.error) {
+          setError(result.error);
+          // Set defaults on error
+          setStats({ totalStudents: 0, totalParents: 0, totalTeachers: 0, totalClasses: 0, attendanceRate: 0 });
+          setClassPerformanceData({
+            labels: [],
+            datasets: [{ label: "Average Score", data: [], backgroundColor: "#2a9d8f" }],
+          });
+        } else {
+          setStats(result.stats || { totalStudents: 0, totalParents: 0, totalTeachers: 0, totalClasses: 0, attendanceRate: 0 });
+          setClassPerformanceData(result.classPerformance || {
+            labels: [],
+            datasets: [{ label: "Average Score", data: [], backgroundColor: "#2a9d8f" }],
+          });
+          setRegistrations(result.registrations || []);
+        }
+      } catch (err) {
+        console.error("Error loading overview data:", err);
+        setError("Failed to load overview data");
+        setStats({ totalStudents: 0, totalParents: 0, totalTeachers: 0, totalClasses: 0, attendanceRate: 0 });
+        setClassPerformanceData({
+          labels: [],
+          datasets: [{ label: "Average Score", data: [], backgroundColor: "#2a9d8f" }],
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
-
-  // Updated stats
-  const stats = {
-    totalStudents: 450,
-    totalParents: 180,
-    totalTeachers: 42,
-  };
-
-  const registrations = [
-    { id: 1, name: "Sarah Lee", type: "Class 10", date: "2025-07-15", status: "Approved" },
-    { id: 2, name: "David Miller", type: "Class 11", date: "2025-07-12", status: "Pending" },
-    { id: 3, name: "Emma Watson", type: "Class 12", date: "2025-07-10", status: "Rejected" },
-    { id: 4, name: "John Smith", type: "Class 9", date: "2025-07-08", status: "Approved" },
-    { id: 5, name: "Lisa Johnson", type: "Class 8", date: "2025-07-05", status: "Pending" },
-  ];
-
-  // ✅ UPDATED: Classes 7, 8, 9, 10 only (No 11 & 12)
-  const classPerformanceData = {
-    labels: ["Class 7", "Class 8", "Class 9", "Class 10"],
-    datasets: [
-      {
-        label: "Average Score (%)",
-        data: [79, 83, 87, 84],
-        backgroundColor: "#2196F3",
-      },
-    ],
-  };
 
   return (
     <div className="overview-page p-2 p-md-3">
@@ -239,10 +278,22 @@ const Overview = () => {
         </Navbar>
       )}
 
-      <Alert variant="info" className="mb-3">
-        📡 Static Data Loaded - Backend/API Not Required
-      </Alert>
+      {loading && (
+        <div className="text-center p-5">
+          <Spinner animation="border" variant="primary" />
+          <p className="mt-2">Loading overview data...</p>
+        </div>
+      )}
 
+      {error && (
+        <Alert variant="warning" className="mb-3">
+          <Alert.Heading>Unable to load data</Alert.Heading>
+          <p>{error}</p>
+        </Alert>
+      )}
+
+      {!loading && !error && (
+        <>
       {/* ⭐ Updated Stat Cards with NEW ICONS */}
       <Row className="mb-4" id="stats">
         
@@ -311,6 +362,8 @@ const Overview = () => {
           </div>
         </Col>
       </Row>
+        </>
+      )}
     </div>
   );
 };

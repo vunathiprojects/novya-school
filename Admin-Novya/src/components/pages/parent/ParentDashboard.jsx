@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   Container,
   Row,
@@ -7,8 +7,10 @@ import {
   Table,
   Badge,
   Alert,
+  Spinner,
 } from "react-bootstrap";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { getSchoolParents } from "../../../api";
 
 // ⭐ COMPONENTS
 import TopBar from "../../TopBar";
@@ -87,39 +89,48 @@ const ParentDashboard = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const chartRef = useRef(null);
+  const [parents, setParents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // ⭐ Parents Table (ADMIN DATA)
-  const parents = [
-    {
-      id: 1,
-      name: "Ramesh Kumar",
-      email: "ramesh@gmail.com",
-      phone: "9876543210",
-      children: 1,
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "Anita Sharma",
-      email: "anita@gmail.com",
-      phone: "9123456780",
-      children: 2,
-      status: "Active",
-    },
-    {
-      id: 3,
-      name: "Suresh Rao",
-      email: "suresh@gmail.com",
-      phone: "9012345678",
-      children: 1,
-      status: "Inactive",
-    },
-  ];
+  // ⭐ Load real parent data
+  useEffect(() => {
+    const loadParents = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const adminEmail = localStorage.getItem("profileEmail");
+        if (!adminEmail) {
+          setError("Admin email not found. Please login again.");
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getSchoolParents(adminEmail);
+        
+        if (result.error) {
+          setError(result.error);
+          setParents([]);
+        } else {
+          setParents(result.parents || []);
+        }
+      } catch (err) {
+        console.error("Error loading parents:", err);
+        setError("Failed to load parents");
+        setParents([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadParents();
+  }, []);
 
   // ⭐ DERIVED STATS (NO STATIC VALUES)
   const totalParents = parents.length;
-  const activeParents = parents.filter(p => p.status === "Active").length;
-  const totalChildren = parents.reduce((sum, p) => sum + p.children, 0);
+  const activeParents = parents.filter(p => p.status === "approved" || p.status === "Approved").length;
+  const totalChildren = parents.reduce((sum, p) => sum + (p.children_count || 0), 0);
 
   // ⭐ Chart Data (linked to table)
   const parentsChart = {
@@ -152,116 +163,131 @@ const ParentDashboard = () => {
         <Container fluid className="py-4">
 
           <Routes>
-            {/* ROUTES */}
-            <Route path="support" element={<ParentSupport />} />
+            {/* ROUTES - Specific routes first */}
             <Route path="payments" element={<ParentPayments />} />
+            <Route path="support" element={<ParentSupport />} />
             <Route path="registration" element={<ParentRegistration />} />
 
-            {/* ⭐ OVERVIEW */}
+            {/* ⭐ OVERVIEW - Default route for parent dashboard (index route) */}
             <Route
-              path="*"
+              index
               element={
                 <>
                   <Alert variant="primary" className="mb-3">
                     👨‍💼 Admin Panel – Parents Overview
                   </Alert>
 
-                  {/* STAT CARDS - Matching TeacherDashboard style */}
-                  <Row className="mb-4" id="stats">
-                    <Col xs={6} md={4} className="mb-3">
-                      <div style={fadeInDelay(0.1)}>
-                        <StatCard
-                          icon={<FaUsers />}
-                          title="Total Parents"
-                          value={totalParents}
-                          bg="primary"
-                        />
-                      </div>
-                    </Col>
-
-                    <Col xs={6} md={4} className="mb-3">
-                      <div style={fadeInDelay(0.2)}>
-                        <StatCard
-                          icon={<FaUserCheck />}
-                          title="Active Parents"
-                          value={activeParents}
-                          bg="success"
-                        />
-                      </div>
-                    </Col>
-
-                    <Col xs={6} md={4} className="mb-3">
-                      <div style={fadeInDelay(0.3)}>
-                        <StatCard
-                          icon={<FaChild />}
-                          title="Total Children"
-                          value={totalChildren}
-                          bg="info"
-                        />
-                      </div>
-                    </Col>
-                  </Row>
-
-                  {/* CHART */}
-                  <Row className="mb-4">
-                    <Col md={12}>
-                      <Card className="shadow">
-                        <Card.Body>
-                          <h5 className="text-center mb-3">
-                            Parents vs Children
-                          </h5>
-                          <div style={{ height: "260px" }}>
-                            <Bar ref={chartRef} data={parentsChart} />
+                  {loading ? (
+                    <div className="text-center p-5">
+                      <Spinner animation="border" variant="primary" />
+                      <p className="mt-3">Loading parents data...</p>
+                    </div>
+                  ) : error ? (
+                    <Alert variant="danger">{error}</Alert>
+                  ) : (
+                    <>
+                      {/* STAT CARDS - Matching TeacherDashboard style */}
+                      <Row className="mb-4" id="stats">
+                        <Col xs={6} md={4} className="mb-3">
+                          <div style={fadeInDelay(0.1)}>
+                            <StatCard
+                              icon={<FaUsers />}
+                              title="Total Parents"
+                              value={totalParents}
+                              bg="primary"
+                            />
                           </div>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  </Row>
+                        </Col>
 
-                  {/* PARENTS TABLE */}
-                  <Row>
-                    <Col md={12}>
-                      <Card className="shadow">
-                        <Card.Body>
-                          <h5 className="text-center mb-3">
-                            Parents List
-                          </h5>
-                          <Table bordered hover responsive>
-                            <thead>
-                              <tr>
-                                <th>Name</th>
-                                <th>Email</th>
-                                <th>Phone</th>
-                                <th>Children</th>
-                                <th>Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {parents.map((p) => (
-                                <tr key={p.id}>
-                                  <td>{p.name}</td>
-                                  <td>{p.email}</td>
-                                  <td>{p.phone}</td>
-                                  <td>{p.children}</td>
-                                  <td>
-                                    <Badge
-                                      bg={
-                                        p.status === "Active"
-                                          ? "success"
-                                          : "secondary"
-                                      }
-                                    >
-                                      {p.status}
-                                    </Badge>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </Table>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  </Row>
+                        <Col xs={6} md={4} className="mb-3">
+                          <div style={fadeInDelay(0.2)}>
+                            <StatCard
+                              icon={<FaUserCheck />}
+                              title="Active Parents"
+                              value={activeParents}
+                              bg="success"
+                            />
+                          </div>
+                        </Col>
+
+                        <Col xs={6} md={4} className="mb-3">
+                          <div style={fadeInDelay(0.3)}>
+                            <StatCard
+                              icon={<FaChild />}
+                              title="Total Children"
+                              value={totalChildren}
+                              bg="info"
+                            />
+                          </div>
+                        </Col>
+                      </Row>
+
+                      {/* CHART */}
+                      <Row className="mb-4">
+                        <Col md={12}>
+                          <Card className="shadow">
+                            <Card.Body>
+                              <h5 className="text-center mb-3">
+                                Parents vs Children
+                              </h5>
+                              <div style={{ height: "260px" }}>
+                                <Bar ref={chartRef} data={parentsChart} />
+                              </div>
+                            </Card.Body>
+                          </Card>
+                        </Col>
+                      </Row>
+
+                      {/* PARENTS TABLE */}
+                      <Row>
+                        <Col md={12}>
+                          <Card className="shadow">
+                            <Card.Body>
+                              <h5 className="text-center mb-3">
+                                Parents List
+                              </h5>
+                              {parents.length > 0 ? (
+                                <Table bordered hover responsive>
+                                  <thead>
+                                    <tr>
+                                      <th>Name</th>
+                                      <th>Email</th>
+                                      <th>Phone</th>
+                                      <th>Children</th>
+                                      <th>Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {parents.map((p) => (
+                                      <tr key={p.parent_id}>
+                                        <td>{p.name}</td>
+                                        <td>{p.email}</td>
+                                        <td>{p.phone}</td>
+                                        <td>{p.children_count || 0}</td>
+                                        <td>
+                                          <Badge
+                                            bg={
+                                              p.status === "approved" || p.status === "Approved"
+                                                ? "success"
+                                                : "secondary"
+                                            }
+                                          >
+                                            {p.status || "N/A"}
+                                          </Badge>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </Table>
+                              ) : (
+                                <p className="text-center text-muted">No parents found</p>
+                              )}
+                            </Card.Body>
+                          </Card>
+                        </Col>
+                      </Row>
+                    </>
+                  )}
                 </>
               }
             />

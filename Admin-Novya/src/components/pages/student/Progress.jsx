@@ -496,6 +496,7 @@ import {
   Collapse,
   Navbar,
   Nav,
+  Spinner,
 } from "react-bootstrap";
 import { Bar } from "react-chartjs-2";
 import {
@@ -517,52 +518,11 @@ import {
 } from "chart.js";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { getProgressData } from "../../../api";
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Legend, Tooltip);
 
 const subjects = ["Math", "Science", "English", "History"];
-
-const generateStudent = (id, name) => {
-  const scores = {
-    Math: Math.floor(Math.random() * 41) + 60,
-    Science: Math.floor(Math.random() * 41) + 60,
-    English: Math.floor(Math.random() * 41) + 60,
-    History: Math.floor(Math.random() * 41) + 60,
-  };
-
-  const average = Math.round(
-    (scores.Math + scores.Science + scores.English + scores.History) / 4
-  );
-
-  const topSubject = Object.keys(scores).reduce((a, b) =>
-    scores[a] > scores[b] ? a : b
-  );
-
-  const improvement = Math.floor(Math.random() * 21);
-  const completion = Math.floor(Math.random() * 21) + 80;
-  const aiInsight =
-    average > 85 ? "High retention" : average < 70 ? "Needs support" : "Steady";
-
-  return {
-    id,
-    name,
-    scores,
-    average,
-    topSubject,
-    improvement,
-    completion,
-    aiInsight,
-  };
-};
-
-// Generate data for Class 7 to 12
-const staticData = Array.from({ length: 6 }, (_, idx) => {
-  const className = `Class ${idx + 7}`;
-  const students = Array.from({ length: 6 }, (_, sIdx) =>
-    generateStudent(`S${idx + 7}${sIdx + 1}`, `Student${idx + 7}${sIdx + 1}`)
-  );
-  return { className, students };
-});
 
 const calcSubjectAvg = (students) => {
   const avg = {};
@@ -575,9 +535,13 @@ const calcSubjectAvg = (students) => {
 };
 
 const Progress = () => {
-  const [classData, setClassData] = useState(staticData);
+  const [rawClassData, setRawClassData] = useState([]); // Store raw data from backend
+  const [classData, setClassData] = useState([]); // Filtered/transformed data
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClass, setSelectedClass] = useState("All");
+  const [selectedExamType, setSelectedExamType] = useState("Average"); // Average, Quarterly, Half-Yearly, Annual
   const [editModal, setEditModal] = useState(false);
   const [editStudent, setEditStudent] = useState(null);
   const [editClassIdx, setEditClassIdx] = useState(null);
@@ -585,11 +549,211 @@ const Progress = () => {
   const [expandedClasses, setExpandedClasses] = useState({});
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
+  // Load data from backend
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Get admin email from localStorage
+        const adminEmail = localStorage.getItem("profileEmail");
+        if (!adminEmail) {
+          setError("Admin email not found. Please login again.");
+          setLoading(false);
+          return;
+        }
+        
+        const result = await getProgressData(adminEmail);
+        
+        if (result.error) {
+          setError(result.error);
+          setClassData([]);
+        } else {
+          // Transform backend data to match frontend format
+          // Backend returns: { classes: { "Class 7": [...], "Class 8": [...] } }
+          // Store raw data first
+          const rawData = [];
+          if (result.classes) {
+            Object.keys(result.classes).forEach((className) => {
+              const students = result.classes[className].map((student) => {
+                return {
+                  id: `S${student.student_id}`,
+                  name: student.name,
+                  student_id: student.student_id,
+                  average_score: student.average_score || 0,
+                  improvement_quarterly: student.improvement_quarterly || 0,
+                  improvement_halfyearly: student.improvement_halfyearly || 0,
+                  improvement_annual: student.improvement_annual || 0,
+                  improvement_avg: student.improvement_avg || 0,
+                  completion: student.completion || 0, // From backend: average of all three exam types
+                  // Store all exam types for filtering
+                  scoresAvg: student.school_scores_avg || {},
+                  scoresQuarterly: student.school_scores_quarterly || {},
+                  scoresHalfyearly: student.school_scores_halfyearly || {},
+                  scoresAnnual: student.school_scores_annual || {},
+                };
+              });
+              
+              rawData.push({
+                className: className,
+                rawStudents: students,
+              });
+            });
+          }
+          
+          setRawClassData(rawData);
+        }
+      } catch (err) {
+        console.error("Error loading progress data:", err);
+        setError("Failed to load progress data");
+        setClassData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []); // Load data once on mount
+  
+  // Apply exam type filter when it changes
+  useEffect(() => {
+    if (rawClassData.length === 0) return;
+    
+    // Apply exam type filter and calculate scores
+    const transformedClasses = rawClassData.map((classItem) => {
+      const students = classItem.rawStudents.map((student) => {
+        // Select scores based on exam type filter
+        let scores = {};
+        if (selectedExamType === "Quarterly") {
+          scores = student.scoresQuarterly;
+        } else if (selectedExamType === "Half-Yearly") {
+          scores = student.scoresHalfyearly;
+        } else if (selectedExamType === "Annual") {
+          scores = student.scoresAnnual;
+        } else {
+          // Average (default)
+          scores = student.scoresAvg;
+        }
+        
+        // Map to standard subject names - backend now normalizes to: Mathematics, Science, English, History, Computer
+        // Backend returns normalized subject names, so we can directly map them
+        const findScore = (standardName, possibleKeys) => {
+          if (!scores || Object.keys(scores).length === 0) {
+            return 0;
+          }
+          
+          const scoreKeys = Object.keys(scores);
+          
+          // First check for exact standard name match (backend normalizes to this)
+          // Note: 0 is a valid score, so we check for undefined/null only
+          if (scores[standardName] !== undefined && scores[standardName] !== null) {
+            return scores[standardName];
+          }
+          
+          // Fallback: check all possible variations (case-insensitive)
+          for (const key of possibleKeys) {
+            // Check exact match
+            if (scores[key] !== undefined && scores[key] !== null) {
+              return scores[key];
+            }
+            // Check case-insensitive match
+            const foundKey = scoreKeys.find(k => k.toLowerCase().trim() === key.toLowerCase().trim());
+            if (foundKey !== undefined && scores[foundKey] !== undefined && scores[foundKey] !== null) {
+              return scores[foundKey];
+            }
+            // Check partial match (for variations like "Social Studies" matching "social")
+            const partialMatch = scoreKeys.find(k => {
+              const kLower = k.toLowerCase().trim();
+              const keyLower = key.toLowerCase().trim();
+              return kLower.includes(keyLower) || keyLower.includes(kLower);
+            });
+            if (partialMatch !== undefined && scores[partialMatch] !== undefined && scores[partialMatch] !== null) {
+              return scores[partialMatch];
+            }
+          }
+          return 0;
+        };
+        
+        const mappedScores = {
+          Math: findScore("Mathematics", ["Math", "Mathematics", "MATHS", "maths", "Maths", "mathematics", "MATH", "math"]),
+          Science: findScore("Science", ["Science", "SCIENCE", "science", "sci", "SCI", "Sciences", "SCIENCES", "sciences"]),
+          English: findScore("English", ["English", "ENGLISH", "english", "eng", "ENG", "Eng"]),
+          History: findScore("History", ["History", "Social Studies", "SocialScience", "SOCIAL STUDIES", "social studies", "social", "Social", "SOCIAL", "SST", "sst", "SocialStudies"]),
+        };
+        
+        // Find top subject
+        const topSubjectEntry = Object.entries(mappedScores).reduce((a, b) => 
+          mappedScores[a[0]] > mappedScores[b[0]] ? a : b
+        );
+        const topSubject = topSubjectEntry[0];
+        
+        // Calculate average of mapped scores
+        const scoreValues = Object.values(mappedScores).filter(v => v > 0);
+        const calculatedAvg = scoreValues.length > 0 
+          ? Math.round((scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length) * 10) / 10
+          : student.average_score || 0;
+        
+        // Calculate improvement based on selected exam type
+        let improvement = 0;
+        if (selectedExamType === "Quarterly") {
+          improvement = student.improvement_quarterly || 0;
+        } else if (selectedExamType === "Half-Yearly") {
+          improvement = student.improvement_halfyearly || 0;
+        } else if (selectedExamType === "Annual") {
+          improvement = student.improvement_annual || 0;
+        } else {
+          // Average
+          improvement = student.improvement_avg || 0;
+        }
+        
+        return {
+          id: student.id,
+          name: student.name,
+          scores: mappedScores,
+          average: calculatedAvg,
+          topSubject: topSubject,
+          improvement: improvement,
+          completion: student.completion,
+          aiInsight: calculatedAvg >= 85 ? "High retention" : calculatedAvg < 70 ? "Needs support" : "Steady",
+        };
+      });
+      
+      return {
+        className: classItem.className,
+        students: students,
+        subjectAverages: calcSubjectAvg(students),
+      };
+    });
+    
+    setClassData(transformedClasses);
+  }, [rawClassData, selectedExamType]); // Re-filter when exam type or raw data changes
+
   useEffect(() => {
     const resize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
+
+  if (loading) {
+    return (
+      <div className="text-center p-5">
+        <Spinner animation="border" variant="primary" />
+        <p className="mt-2">Loading progress data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-3">
+        <Alert variant="warning">
+          <Alert.Heading>Unable to load data</Alert.Heading>
+          <p>{error}</p>
+        </Alert>
+      </div>
+    );
+  }
 
   const filtered = classData
     .filter((cls) => selectedClass === "All" || cls.className === selectedClass)
@@ -720,6 +884,19 @@ const Progress = () => {
                 ))}
               </Form.Select>
 
+              {/* Exam Type Filter */}
+              <Form.Select
+                className="mb-2"
+                style={{ fontSize: "14px", padding: "4px" }}
+                value={selectedExamType}
+                onChange={(e) => setSelectedExamType(e.target.value)}
+              >
+                <option value="Average">Average (All Exams)</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Half-Yearly">Half-Yearly</option>
+                <option value="Annual">Annual</option>
+              </Form.Select>
+
               {/* Export */}
               <Button variant="outline-danger" size="sm" onClick={exportToPDF}>
                 <FaDownload /> Export PDF
@@ -760,6 +937,18 @@ const Progress = () => {
               {classData.map((cls) => (
                 <option key={cls.className}>{cls.className}</option>
               ))}
+            </Form.Select>
+
+            <Form.Select
+              style={{ width: "180px", fontSize: "14px", padding: "4px" }}
+              className="me-2"
+              value={selectedExamType}
+              onChange={(e) => setSelectedExamType(e.target.value)}
+            >
+              <option value="Average">Average (All Exams)</option>
+              <option value="Quarterly">Quarterly</option>
+              <option value="Half-Yearly">Half-Yearly</option>
+              <option value="Annual">Annual</option>
             </Form.Select>
 
             <Button variant="outline-danger" onClick={exportToPDF}>
