@@ -848,9 +848,12 @@ def get_school_student_progress(request):
     
     try:
         admin_school = get_admin_school(request)
+        print(f"🔍 get_school_student_progress called - admin_school: {admin_school}")
         if not admin_school:
+            print("❌ Admin school not found")
             return JsonResponse({"error": "Admin school not found"}, status=400)
         
+        print(f"✅ Processing progress for school: {admin_school}")
         with connection.cursor() as cursor:
             # Get all students in this school (ALL grades)
             cursor.execute(
@@ -874,13 +877,45 @@ def get_school_student_progress(request):
             columns = [col[0] for col in cursor.description]
             students_data = []
             
-            for row in cursor.fetchall():
-                student_dict = dict(zip(columns, row))
-                student_id = student_dict.get("student_id")
-                grade = student_dict.get("grade") or "Unknown"
-                
-                # Get quiz attempts for this student
-                cursor.execute(
+            all_rows = cursor.fetchall()
+            print(f"📊 Found {len(all_rows)} students in database for school: {admin_school}")
+            
+            if len(all_rows) == 0:
+                print(f"⚠️ No students found for school: {admin_school}")
+                return JsonResponse({
+                    "classes": {},
+                    "total_students": 0,
+                    "school": admin_school
+                })
+            
+            for row in all_rows:
+                try:
+                    student_dict = dict(zip(columns, row))
+                    student_id = student_dict.get("student_id")
+                    
+                    # Skip if student_id is missing
+                    if not student_id:
+                        print(f"⚠️ Skipping student with no student_id: {student_dict}")
+                        continue
+                    
+                    grade = student_dict.get("grade") or "Unknown"
+                    # Format grade as "Class X" for consistency
+                    if grade and grade != "Unknown":
+                        try:
+                            # If grade is a number, format as "Class X"
+                            grade_num = int(grade.strip())
+                            grade = f"Class {grade_num}"
+                        except (ValueError, AttributeError):
+                            # If grade is already a string like "Class 9", keep it
+                            if not grade.startswith("Class "):
+                                grade = f"Class {grade}"
+                    else:
+                        grade = "Unknown"
+                    
+                    print(f"📝 Processing student {student_id}: {student_dict.get('first_name')} {student_dict.get('last_name')}, grade: {grade}")
+                    
+                    # Get quiz attempts for this student
+                    cursor.execute(
                     """
                     SELECT 
                         COALESCE(SUM(total_questions), 0) as total_quiz_questions,
@@ -891,250 +926,438 @@ def get_school_student_progress(request):
                     AND (total_questions > 0 OR score IS NOT NULL)
                     """,
                     [student_id]
-                )
-                quiz_row = cursor.fetchone()
-                total_quiz_q = quiz_row[0] or 0
-                total_quiz_correct = quiz_row[1] or 0
-                quiz_count = quiz_row[2] or 0
-                
-                # Calculate quiz score
-                quiz_score = None
-                if total_quiz_q > 0:
-                    quiz_score = round((total_quiz_correct / total_quiz_q) * 100, 1)
-                elif quiz_count > 0:
-                    # Fallback: use score field if available
-                    cursor.execute(
-                        """
-                        SELECT AVG(score) as avg_score
-                        FROM quiz_attempt
-                        WHERE student_id = %s AND score IS NOT NULL
-                        """,
-                        [student_id]
                     )
-                    score_row = cursor.fetchone()
-                    if score_row and score_row[0]:
-                        quiz_score = round((score_row[0] / 10) * 100, 1)  # Assuming 10 questions per quiz
-                
-                # Get mock test attempts
-                cursor.execute(
-                    """
-                    SELECT 
-                        COALESCE(SUM(total_questions), 0) as total_mock_questions,
-                        COALESCE(SUM(correct_answers), 0) as total_mock_correct,
-                        COUNT(*) as mock_count
-                    FROM mock_test_attempt
-                    WHERE student_id = %s
-                    AND (total_questions > 0 OR score IS NOT NULL)
-                    """,
-                    [student_id]
-                )
-                mock_row = cursor.fetchone()
-                total_mock_q = mock_row[0] or 0
-                total_mock_correct = mock_row[1] or 0
-                mock_count = mock_row[2] or 0
-                
-                # Calculate mock score
-                mock_score = None
-                if total_mock_q > 0:
-                    mock_score = round((total_mock_correct / total_mock_q) * 100, 1)
-                elif mock_count > 0:
-                    cursor.execute(
-                        """
-                        SELECT AVG(score) as avg_score
-                        FROM mock_test_attempt
-                        WHERE student_id = %s AND score IS NOT NULL
-                        """,
-                        [student_id]
-                    )
-                    score_row = cursor.fetchone()
-                    if score_row and score_row[0]:
-                        mock_score = round((score_row[0] / 10) * 100, 1)
-                
-                # Calculate average score
-                avg_score = None
-                valid_scores = []
-                if quiz_score is not None:
-                    valid_scores.append(quiz_score)
-                if mock_score is not None:
-                    valid_scores.append(mock_score)
-                if valid_scores:
-                    avg_score = round(sum(valid_scores) / len(valid_scores), 1)
-                
-                # Get school test scores (marks published by teachers) for this student
-                # Get all exam types: quarterly, half-yearly, annual
-                # Normalize subject names in SQL to handle case variations
-                cursor.execute(
-                    """
-                    SELECT 
-                        CASE 
-                            WHEN LOWER(TRIM(subject)) LIKE '%math%' OR LOWER(TRIM(subject)) LIKE '%mathematics%' THEN 'Mathematics'
-                            WHEN LOWER(TRIM(subject)) LIKE '%science%' OR LOWER(TRIM(subject)) LIKE '%sci%' THEN 'Science'
-                            WHEN LOWER(TRIM(subject)) LIKE '%english%' OR LOWER(TRIM(subject)) LIKE '%eng%' THEN 'English'
-                            WHEN LOWER(TRIM(subject)) LIKE '%social%' OR LOWER(TRIM(subject)) LIKE '%history%' OR LOWER(TRIM(subject)) LIKE '%sst%' OR LOWER(TRIM(subject)) LIKE '%studies%' THEN 'History'
-                            WHEN LOWER(TRIM(subject)) LIKE '%computer%' OR LOWER(TRIM(subject)) LIKE '%comp%' OR LOWER(TRIM(subject)) LIKE '%cs%' THEN 'Computer'
-                            ELSE TRIM(subject)
-                        END as normalized_subject,
-                        quarterly_score,
-                        half_yearly_score,
-                        annual_score
-                    FROM (
-                        SELECT 
-                            subject,
-                            quarterly_score,
-                            half_yearly_score,
-                            annual_score,
-                            ROW_NUMBER() OVER (
-                                PARTITION BY 
-                                    CASE 
-                                        WHEN LOWER(TRIM(subject)) LIKE '%math%' OR LOWER(TRIM(subject)) LIKE '%mathematics%' THEN 'Mathematics'
-                                        WHEN LOWER(TRIM(subject)) LIKE '%science%' OR LOWER(TRIM(subject)) LIKE '%sci%' THEN 'Science'
-                                        WHEN LOWER(TRIM(subject)) LIKE '%english%' OR LOWER(TRIM(subject)) LIKE '%eng%' THEN 'English'
-                                        WHEN LOWER(TRIM(subject)) LIKE '%social%' OR LOWER(TRIM(subject)) LIKE '%history%' OR LOWER(TRIM(subject)) LIKE '%sst%' OR LOWER(TRIM(subject)) LIKE '%studies%' THEN 'History'
-                                        WHEN LOWER(TRIM(subject)) LIKE '%computer%' OR LOWER(TRIM(subject)) LIKE '%comp%' OR LOWER(TRIM(subject)) LIKE '%cs%' THEN 'Computer'
-                                        ELSE TRIM(subject)
-                                    END
-                                ORDER BY updated_at DESC, academic_year DESC
-                            ) as rn
-                        FROM school_test_scores
-                        WHERE student_id = %s
-                    ) ranked
-                    WHERE rn = 1
-                    ORDER BY normalized_subject
-                    """,
-                    [student_id]
-                )
-                school_scores = cursor.fetchall()
-                
-                # Calculate subject-wise scores, averages, improvement, and completion
-                subject_scores_avg = {}  # Average of all three exams per subject
-                subject_scores_quarterly = {}
-                subject_scores_halfyearly = {}
-                subject_scores_annual = {}
-                all_scores_for_completion = []  # All scores for completion calculation
-                
-                for score_row in school_scores:
-                    normalized_subject = score_row[0]  # Already normalized in SQL
-                    quarterly = score_row[1]
-                    half_yearly = score_row[2]
-                    annual = score_row[3]
+                    quiz_row = cursor.fetchone()
+                    total_quiz_q = quiz_row[0] if quiz_row and len(quiz_row) > 0 else 0
+                    total_quiz_correct = quiz_row[1] if quiz_row and len(quiz_row) > 1 else 0
+                    quiz_count = quiz_row[2] if quiz_row and len(quiz_row) > 2 else 0
                     
-                    if normalized_subject:
-                        # Store individual exam scores with normalized subject name
-                        if quarterly is not None:
-                            subject_scores_quarterly[normalized_subject] = float(quarterly)
-                            all_scores_for_completion.append(float(quarterly))
-                        if half_yearly is not None:
-                            subject_scores_halfyearly[normalized_subject] = float(half_yearly)
-                            all_scores_for_completion.append(float(half_yearly))
-                        if annual is not None:
-                            subject_scores_annual[normalized_subject] = float(annual)
-                            all_scores_for_completion.append(float(annual))
-                        
-                        # Calculate average of all three exams for this subject
-                        valid_scores = []
-                        if quarterly is not None:
-                            valid_scores.append(float(quarterly))
-                        if half_yearly is not None:
-                            valid_scores.append(float(half_yearly))
-                        if annual is not None:
-                            valid_scores.append(float(annual))
-                        
-                        if valid_scores:
-                            subject_avg = round(sum(valid_scores) / len(valid_scores), 1)
-                            subject_scores_avg[normalized_subject] = subject_avg
-                
-                # Calculate overall average (average of all subject averages)
-                final_avg_score = avg_score
-                if subject_scores_avg:
-                    subject_avg_values = list(subject_scores_avg.values())
-                    final_avg_score = round(sum(subject_avg_values) / len(subject_avg_values), 1)
-                
-                # Calculate improvement for different exam types
-                # Quarterly: 0 (baseline)
-                # Half-yearly: improvement from quarterly
-                # Annual: improvement from half-yearly
-                improvement_quarterly = 0  # Baseline, no improvement
-                
-                improvement_halfyearly = 0
-                if subject_scores_halfyearly and subject_scores_quarterly:
-                    halfyearly_values = []
-                    quarterly_values = []
-                    for subject in subject_scores_halfyearly.keys():
-                        halfyearly_val = subject_scores_halfyearly[subject]
-                        quarterly_val = subject_scores_quarterly.get(subject)
-                        if quarterly_val is not None:
-                            halfyearly_values.append(halfyearly_val)
-                            quarterly_values.append(quarterly_val)
-                    if halfyearly_values and quarterly_values:
-                        halfyearly_avg = sum(halfyearly_values) / len(halfyearly_values)
-                        quarterly_avg = sum(quarterly_values) / len(quarterly_values)
-                        improvement_halfyearly = round(halfyearly_avg - quarterly_avg, 1)
-                
-                improvement_annual = 0
-                if subject_scores_annual and subject_scores_halfyearly:
-                    annual_values = []
-                    halfyearly_values = []
-                    for subject in subject_scores_annual.keys():
-                        annual_val = subject_scores_annual[subject]
-                        halfyearly_val = subject_scores_halfyearly.get(subject)
-                        if halfyearly_val is not None:
-                            annual_values.append(annual_val)
-                            halfyearly_values.append(halfyearly_val)
-                    if annual_values and halfyearly_values:
-                        annual_avg = sum(annual_values) / len(annual_values)
-                        halfyearly_avg = sum(halfyearly_values) / len(halfyearly_values)
-                        improvement_annual = round(annual_avg - halfyearly_avg, 1)
-                
-                # For Average: improvement from quarterly to annual
-                improvement_avg = 0
-                if subject_scores_annual and subject_scores_quarterly:
-                    annual_values = []
-                    quarterly_values = []
-                    for subject in subject_scores_annual.keys():
-                        annual_val = subject_scores_annual[subject]
-                        quarterly_val = subject_scores_quarterly.get(subject)
-                        if quarterly_val is not None:
-                            annual_values.append(annual_val)
-                            quarterly_values.append(quarterly_val)
-                    if annual_values and quarterly_values:
-                        annual_avg = sum(annual_values) / len(annual_values)
-                        quarterly_avg = sum(quarterly_values) / len(quarterly_values)
-                        improvement_avg = round(annual_avg - quarterly_avg, 1)
-                
-                # Calculate completion: average of all three exam types (quarterly, half-yearly, annual)
-                completion = 0
-                if all_scores_for_completion:
-                    completion = round(sum(all_scores_for_completion) / len(all_scores_for_completion), 1)
-                
-                students_data.append({
-                    "student_id": student_id,
-                    "username": student_dict.get("student_username"),
-                    "email": student_dict.get("student_email"),
-                    "name": f"{student_dict.get('first_name', '')} {student_dict.get('last_name', '')}".strip(),
-                    "grade": grade,
-                    "quiz_score": quiz_score,
-                    "mock_score": mock_score,
-                    "average_score": final_avg_score,
-                    "school_scores_avg": subject_scores_avg,  # Average of all three exams per subject
-                    "school_scores_quarterly": subject_scores_quarterly,
-                    "school_scores_halfyearly": subject_scores_halfyearly,
-                    "school_scores_annual": subject_scores_annual,
-                    "improvement_quarterly": improvement_quarterly,  # 0 (baseline)
-                    "improvement_halfyearly": improvement_halfyearly,  # Improvement from quarterly
-                    "improvement_annual": improvement_annual,  # Improvement from half-yearly
-                    "improvement_avg": improvement_avg,  # Improvement from quarterly to annual
-                    "completion": completion,  # Average of all three exam types
-                    "quiz_count": quiz_count,
-                    "mock_count": mock_count,
-                })
+                    # Calculate quiz score
+                    quiz_score = None
+                    if total_quiz_q > 0:
+                        quiz_score = round((total_quiz_correct / total_quiz_q) * 100, 1)
+                    elif quiz_count > 0:
+                        # Fallback: use score field if available
+                        cursor.execute(
+                            """
+                            SELECT AVG(score) as avg_score
+                            FROM quiz_attempt
+                            WHERE student_id = %s AND score IS NOT NULL
+                            """,
+                            [student_id]
+                        )
+                        score_row = cursor.fetchone()
+                        if score_row and score_row[0]:
+                            quiz_score = round((score_row[0] / 10) * 100, 1)  # Assuming 10 questions per quiz
+                    
+                    # Get mock test attempts
+                    cursor.execute(
+                        """
+                        SELECT 
+                            COALESCE(SUM(total_questions), 0) as total_mock_questions,
+                            COALESCE(SUM(correct_answers), 0) as total_mock_correct,
+                            COUNT(*) as mock_count
+                        FROM mock_test_attempt
+                        WHERE student_id = %s
+                        AND (total_questions > 0 OR score IS NOT NULL)
+                        """,
+                        [student_id]
+                    )
+                    mock_row = cursor.fetchone()
+                    total_mock_q = mock_row[0] if mock_row and len(mock_row) > 0 else 0
+                    total_mock_correct = mock_row[1] if mock_row and len(mock_row) > 1 else 0
+                    mock_count = mock_row[2] if mock_row and len(mock_row) > 2 else 0
+                    
+                    # Calculate mock score
+                    mock_score = None
+                    if total_mock_q > 0:
+                        mock_score = round((total_mock_correct / total_mock_q) * 100, 1)
+                    elif mock_count > 0:
+                        cursor.execute(
+                            """
+                            SELECT AVG(score) as avg_score
+                            FROM mock_test_attempt
+                            WHERE student_id = %s AND score IS NOT NULL
+                            """,
+                            [student_id]
+                        )
+                        score_row = cursor.fetchone()
+                        if score_row and score_row[0]:
+                            mock_score = round((score_row[0] / 10) * 100, 1)
+                    
+                    # Calculate average score
+                    avg_score = None
+                    valid_scores = []
+                    if quiz_score is not None:
+                        valid_scores.append(quiz_score)
+                    if mock_score is not None:
+                        valid_scores.append(mock_score)
+                    if valid_scores:
+                        avg_score = round(sum(valid_scores) / len(valid_scores), 1)
+                    
+                    # Get school test scores (marks published by teachers) for this student
+                    # Get all exam types: quarterly, half-yearly, annual
+                    # Normalize subject names in SQL to handle case variations
+                    school_scores = []
+                    try:
+                        if student_id:
+                            # First, check if ANY scores exist for this student (for debugging)
+                            cursor.execute(
+                                """
+                                SELECT COUNT(*) 
+                                FROM school_test_scores
+                                WHERE student_id = %s
+                                """,
+                                [student_id]
+                            )
+                            total_scores_count = cursor.fetchone()[0]
+                            print(f"  🔍 Total school_test_scores records for student {student_id}: {total_scores_count}")
+                            
+                            if total_scores_count > 0:
+                                # Get sample subjects to see what's in the database
+                                cursor.execute(
+                                    """
+                                    SELECT DISTINCT subject, quarterly_score, half_yearly_score, annual_score
+                                    FROM school_test_scores
+                                    WHERE student_id = %s
+                                    LIMIT 10
+                                    """,
+                                    [student_id]
+                                )
+                                sample_scores = cursor.fetchall()
+                                print(f"  📋 Sample scores in DB for student {student_id}:")
+                                for row in sample_scores:
+                                    print(f"    - Subject: {row[0]}, Q: {row[1]}, HY: {row[2]}, AN: {row[3]}")
+                            else:
+                                # Check if there are scores for ANY student_id (to verify table has data)
+                                cursor.execute(
+                                    """
+                                    SELECT COUNT(*) 
+                                    FROM school_test_scores
+                                    LIMIT 1
+                                    """
+                                )
+                                total_table_count = cursor.fetchone()[0]
+                                print(f"  ⚠️ No scores for student {student_id}, but table has {total_table_count} total records")
+                                
+                                # Check what student_ids exist in the table
+                                cursor.execute(
+                                    """
+                                    SELECT DISTINCT student_id
+                                    FROM school_test_scores
+                                    LIMIT 10
+                                    """
+                                )
+                                existing_student_ids = [row[0] for row in cursor.fetchall()]
+                                print(f"  📋 Sample student_ids in school_test_scores table: {existing_student_ids}")
+                            
+                            # Simplified query - get all scores and normalize, then deduplicate in Python
+                            cursor.execute(
+                                """
+                                SELECT 
+                                    subject,
+                                    quarterly_score,
+                                    half_yearly_score,
+                                    annual_score,
+                                    updated_at,
+                                    academic_year
+                                FROM school_test_scores
+                                WHERE student_id = %s
+                                ORDER BY updated_at DESC, academic_year DESC, subject
+                                """,
+                                [student_id]
+                            )
+                            all_scores = cursor.fetchall()
+                            
+                            # Normalize and deduplicate in Python
+                            normalized_scores = {}
+                            for row in all_scores:
+                                subject = row[0]
+                                quarterly = row[1]
+                                half_yearly = row[2]
+                                annual = row[3]
+                                
+                                # Normalize subject name
+                                subject_lower = subject.lower().strip() if subject else ""
+                                if 'math' in subject_lower or 'mathematics' in subject_lower:
+                                    normalized_subject = 'Mathematics'
+                                elif 'biology' in subject_lower or 'bio' in subject_lower:
+                                    normalized_subject = 'Biology'
+                                elif 'physics' in subject_lower or 'phy' in subject_lower:
+                                    normalized_subject = 'Physics'
+                                elif 'english' in subject_lower or 'eng' in subject_lower:
+                                    normalized_subject = 'English'
+                                elif 'social' in subject_lower or 'history' in subject_lower or 'sst' in subject_lower or 'studies' in subject_lower:
+                                    normalized_subject = 'History'
+                                elif 'computer' in subject_lower or 'comp' in subject_lower or 'cs' in subject_lower:
+                                    normalized_subject = 'Computer'
+                                elif 'science' in subject_lower or 'sci' in subject_lower:
+                                    normalized_subject = 'Science'
+                                elif 'hindi' in subject_lower or 'hin' in subject_lower:
+                                    normalized_subject = 'Hindi'
+                                elif 'telugu' in subject_lower or 'tel' in subject_lower:
+                                    normalized_subject = 'Telugu'
+                                else:
+                                    normalized_subject = subject.strip() if subject else subject
+                                
+                                # Keep only the first (most recent) record for each normalized subject
+                                if normalized_subject not in normalized_scores:
+                                    normalized_scores[normalized_subject] = (quarterly, half_yearly, annual)
+                            
+                            # Convert to list format matching the original query result
+                            school_scores = [(subj, q, hy, an) for subj, (q, hy, an) in normalized_scores.items()]
+                            school_scores.sort(key=lambda x: x[0])  # Sort by subject name
+                            print(f"  📊 Found {len(school_scores)} school test score records for student {student_id} (after normalization)")
+                            if school_scores:
+                                print(f"  ✅ Normalized subjects: {[row[0] for row in school_scores]}")
+                                print(f"  ✅ First score example: Subject={school_scores[0][0]}, Q={school_scores[0][1]}, HY={school_scores[0][2]}, AN={school_scores[0][3]}")
+                            if school_scores:
+                                print(f"  📋 Sample score row: {school_scores[0] if school_scores else 'None'}")
+                                for idx, score_row in enumerate(school_scores[:3]):  # Show first 3
+                                    if len(score_row) >= 4:
+                                        print(f"    Row {idx+1}: Subject={score_row[0]}, Q={score_row[1]}, HY={score_row[2]}, AN={score_row[3]}")
+                            else:
+                                print(f"  ⚠️ No normalized school_test_scores found for student {student_id}")
+                                # Double-check: query without normalization to see raw data
+                                cursor.execute(
+                                    """
+                                    SELECT subject, quarterly_score, half_yearly_score, annual_score, student_id
+                                    FROM school_test_scores
+                                    WHERE student_id = %s
+                                    LIMIT 5
+                                    """,
+                                    [student_id]
+                                )
+                                raw_check = cursor.fetchall()
+                                if raw_check:
+                                    print(f"  ⚠️ Found {len(raw_check)} RAW records but normalization failed!")
+                                    for row in raw_check:
+                                        print(f"    RAW: student_id={row[4]}, subject='{row[0]}', Q={row[1]}, HY={row[2]}, AN={row[3]}")
+                                else:
+                                    print(f"  ❌ No records at all for student_id={student_id} in school_test_scores table")
+                    except Exception as sql_error:
+                        print(f"⚠️ Error fetching school scores for student {student_id}: {sql_error}")
+                        import traceback
+                        traceback.print_exc()
+                        school_scores = []  # Continue with empty scores
+                    
+                    # Calculate subject-wise scores, averages, improvement, and completion
+                    subject_scores_avg = {}  # Average of all three exams per subject
+                    subject_scores_quarterly = {}
+                    subject_scores_halfyearly = {}
+                    subject_scores_annual = {}
+                    all_scores_for_completion = []  # All scores for completion calculation
+                    
+                    # Process school scores if available
+                    if school_scores:
+                        print(f"  📊 Processing {len(school_scores)} school score records for student {student_id}")
+                        for score_row in school_scores:
+                            # Safely access row elements with bounds checking
+                            if not score_row or len(score_row) < 4:
+                                print(f"    ⚠️ Skipping invalid score_row: {score_row}")
+                                continue  # Skip invalid rows
+                            normalized_subject = score_row[0] if len(score_row) > 0 else None  # Already normalized in SQL
+                            quarterly = score_row[1] if len(score_row) > 1 else None
+                            half_yearly = score_row[2] if len(score_row) > 2 else None
+                            annual = score_row[3] if len(score_row) > 3 else None
+                            
+                            print(f"    📝 Subject: {normalized_subject}, Quarterly: {quarterly}, Half-Yearly: {half_yearly}, Annual: {annual}")
+                            
+                            if normalized_subject:
+                                # Store individual exam scores with normalized subject name
+                                # Safely convert to float, handling None and invalid values
+                                try:
+                                    if quarterly is not None:
+                                        quarterly_float = float(quarterly)
+                                        subject_scores_quarterly[normalized_subject] = quarterly_float
+                                        all_scores_for_completion.append(quarterly_float)
+                                except (ValueError, TypeError):
+                                    pass  # Skip invalid quarterly score
+                                
+                                try:
+                                    if half_yearly is not None:
+                                        halfyearly_float = float(half_yearly)
+                                        subject_scores_halfyearly[normalized_subject] = halfyearly_float
+                                        all_scores_for_completion.append(halfyearly_float)
+                                except (ValueError, TypeError):
+                                    pass  # Skip invalid half-yearly score
+                                
+                                try:
+                                    if annual is not None:
+                                        annual_float = float(annual)
+                                        subject_scores_annual[normalized_subject] = annual_float
+                                        all_scores_for_completion.append(annual_float)
+                                except (ValueError, TypeError):
+                                    pass  # Skip invalid annual score
+                                
+                                # Calculate average of all three exams for this subject
+                                valid_scores = []
+                                try:
+                                    if quarterly is not None:
+                                        valid_scores.append(float(quarterly))
+                                except (ValueError, TypeError):
+                                    pass
+                                try:
+                                    if half_yearly is not None:
+                                        valid_scores.append(float(half_yearly))
+                                except (ValueError, TypeError):
+                                    pass
+                                try:
+                                    if annual is not None:
+                                        valid_scores.append(float(annual))
+                                except (ValueError, TypeError):
+                                    pass
+                                
+                                if valid_scores:
+                                    subject_avg = round(sum(valid_scores) / len(valid_scores), 1)
+                                    subject_scores_avg[normalized_subject] = subject_avg
+                    else:
+                        print(f"  ⚠️ No school test scores found for student {student_id}")
+                    
+                    # Calculate overall average (average of all subject averages)
+                    final_avg_score = avg_score
+                    if subject_scores_avg and len(subject_scores_avg) > 0:
+                        try:
+                            subject_avg_values = list(subject_scores_avg.values())
+                            final_avg_score = round(sum(subject_avg_values) / len(subject_avg_values), 1)
+                        except (ZeroDivisionError, TypeError):
+                            final_avg_score = avg_score or 0
+                    
+                    # Calculate improvement for different exam types
+                    # Quarterly: 0 (baseline)
+                    # Half-yearly: improvement from quarterly
+                    # Annual: improvement from half-yearly
+                    improvement_quarterly = 0  # Baseline, no improvement
+                    
+                    improvement_halfyearly = 0
+                    if subject_scores_halfyearly and subject_scores_quarterly:
+                        halfyearly_values = []
+                        quarterly_values = []
+                        for subject in subject_scores_halfyearly.keys():
+                            try:
+                                halfyearly_val = subject_scores_halfyearly.get(subject)
+                                quarterly_val = subject_scores_quarterly.get(subject)
+                                if halfyearly_val is not None and quarterly_val is not None:
+                                    halfyearly_values.append(float(halfyearly_val))
+                                    quarterly_values.append(float(quarterly_val))
+                            except (ValueError, TypeError, KeyError):
+                                continue  # Skip invalid values
+                        if halfyearly_values and quarterly_values and len(halfyearly_values) > 0:
+                            try:
+                                halfyearly_avg = sum(halfyearly_values) / len(halfyearly_values)
+                                quarterly_avg = sum(quarterly_values) / len(quarterly_values)
+                                improvement_halfyearly = round(halfyearly_avg - quarterly_avg, 1)
+                            except (ZeroDivisionError, TypeError):
+                                improvement_halfyearly = 0
+                    
+                    improvement_annual = 0
+                    if subject_scores_annual and subject_scores_halfyearly:
+                        annual_values = []
+                        halfyearly_values = []
+                        for subject in subject_scores_annual.keys():
+                            try:
+                                annual_val = subject_scores_annual.get(subject)
+                                halfyearly_val = subject_scores_halfyearly.get(subject)
+                                if annual_val is not None and halfyearly_val is not None:
+                                    annual_values.append(float(annual_val))
+                                    halfyearly_values.append(float(halfyearly_val))
+                            except (ValueError, TypeError, KeyError):
+                                continue  # Skip invalid values
+                        if annual_values and halfyearly_values and len(annual_values) > 0:
+                            try:
+                                annual_avg = sum(annual_values) / len(annual_values)
+                                halfyearly_avg = sum(halfyearly_values) / len(halfyearly_values)
+                                improvement_annual = round(annual_avg - halfyearly_avg, 1)
+                            except (ZeroDivisionError, TypeError):
+                                improvement_annual = 0
+                    
+                    # For Average: improvement from quarterly to annual
+                    improvement_avg = 0
+                    if subject_scores_annual and subject_scores_quarterly:
+                        annual_values = []
+                        quarterly_values = []
+                        for subject in subject_scores_annual.keys():
+                            try:
+                                annual_val = subject_scores_annual.get(subject)
+                                quarterly_val = subject_scores_quarterly.get(subject)
+                                if annual_val is not None and quarterly_val is not None:
+                                    annual_values.append(float(annual_val))
+                                    quarterly_values.append(float(quarterly_val))
+                            except (ValueError, TypeError, KeyError):
+                                continue  # Skip invalid values
+                        if annual_values and quarterly_values and len(annual_values) > 0:
+                            try:
+                                annual_avg = sum(annual_values) / len(annual_values)
+                                quarterly_avg = sum(quarterly_values) / len(quarterly_values)
+                                improvement_avg = round(annual_avg - quarterly_avg, 1)
+                            except (ZeroDivisionError, TypeError):
+                                improvement_avg = 0
+                    
+                    # Calculate completion: average of all three exam types (quarterly, half-yearly, annual)
+                    completion = 0
+                    if all_scores_for_completion and len(all_scores_for_completion) > 0:
+                        try:
+                            completion = round(sum(all_scores_for_completion) / len(all_scores_for_completion), 1)
+                        except (ZeroDivisionError, TypeError):
+                            completion = 0
+                    
+                    print(f"  ✅ Adding student {student_id} ({student_dict.get('first_name')} {student_dict.get('last_name')}) to students_data")
+                    print(f"     Subject scores - Avg: {subject_scores_avg}, Quarterly: {subject_scores_quarterly}, Half-Yearly: {subject_scores_halfyearly}, Annual: {subject_scores_annual}")
+                    
+                    students_data.append({
+                        "student_id": student_id,
+                        "username": student_dict.get("student_username") or "",
+                        "email": student_dict.get("student_email") or "",
+                        "name": f"{student_dict.get('first_name', '')} {student_dict.get('last_name', '')}".strip() or "Unknown",
+                        "grade": grade,
+                        "quiz_score": quiz_score,
+                        "mock_score": mock_score,
+                        "average_score": final_avg_score or 0,
+                        "school_scores_avg": subject_scores_avg,  # Average of all three exams per subject
+                        "school_scores_quarterly": subject_scores_quarterly,
+                        "school_scores_halfyearly": subject_scores_halfyearly,
+                        "school_scores_annual": subject_scores_annual,
+                        "improvement_quarterly": improvement_quarterly,  # 0 (baseline)
+                        "improvement_halfyearly": improvement_halfyearly,  # Improvement from quarterly
+                        "improvement_annual": improvement_annual,  # Improvement from half-yearly
+                        "improvement_avg": improvement_avg,  # Improvement from quarterly to annual
+                        "completion": completion,  # Average of all three exam types
+                        "quiz_count": quiz_count or 0,
+                        "mock_count": mock_count or 0,
+                    })
+                except Exception as student_error:
+                    import traceback
+                    print(f"⚠️ Error processing student {student_id if 'student_id' in locals() else 'unknown'}: {student_error}")
+                    print(traceback.format_exc())
+                    continue  # Skip this student and continue with next
             
             # Group by grade/class
             classes_data = {}
+            print(f"📊 Grouping {len(students_data)} students by grade")
             for student in students_data:
-                grade = student["grade"]
+                grade = student.get("grade") or "Unknown"
+                # Grade should already be formatted as "Class X" from earlier processing
+                # But ensure it's consistent
+                if grade and grade != "Unknown":
+                    if not str(grade).startswith("Class "):
+                        try:
+                            grade_num = int(str(grade).strip())
+                            grade = f"Class {grade_num}"
+                        except (ValueError, AttributeError):
+                            grade = f"Class {grade}"
+                else:
+                    grade = "Unknown"
+                
                 if grade not in classes_data:
                     classes_data[grade] = []
                 classes_data[grade].append(student)
+                print(f"  ✅ Added student {student.get('name')} to {grade}")
+            
+            print(f"✅ Returning progress data: {len(students_data)} students, {len(classes_data)} classes")
+            print(f"📊 Classes: {list(classes_data.keys())}")
+            if len(students_data) > 0:
+                print(f"📋 Sample student data keys: {list(students_data[0].keys()) if students_data else 'None'}")
+                print(f"📋 First student grade: {students_data[0].get('grade') if students_data else 'None'}")
             
             return JsonResponse({
                 "classes": classes_data,
@@ -1143,9 +1366,13 @@ def get_school_student_progress(request):
             })
     except Exception as e:
         import traceback
-        print(f"Error in get_school_student_progress: {e}")
-        print(traceback.format_exc())
-        return JsonResponse({"error": str(e)}, status=500)
+        error_trace = traceback.format_exc()
+        print(f"❌ Error in get_school_student_progress: {str(e)}")
+        print(f"📋 Full traceback:\n{error_trace}")
+        return JsonResponse({
+            "error": f"Failed to load progress data: {str(e)}",
+            "details": str(e)
+        }, status=500)
 
 
 # Get student reports data for ALL grades in admin's school
@@ -1237,11 +1464,14 @@ def get_school_student_reports(request):
                 score_rows = cursor.fetchall()
                 
                 for score_row in score_rows:
-                    subject = score_row[0]
-                    overall = score_row[1]
-                    annual = score_row[2]
-                    half_yearly = score_row[3]
-                    quarterly = score_row[4]
+                    # Safely access row elements with bounds checking
+                    if not score_row or len(score_row) < 5:
+                        continue  # Skip invalid rows
+                    subject = score_row[0] if len(score_row) > 0 else None
+                    overall = score_row[1] if len(score_row) > 1 else None
+                    annual = score_row[2] if len(score_row) > 2 else None
+                    half_yearly = score_row[3] if len(score_row) > 3 else None
+                    quarterly = score_row[4] if len(score_row) > 4 else None
                     
                     # Use overall_score if available, otherwise use annual, then half_yearly, then quarterly
                     marks_value = overall if overall is not None else (annual if annual is not None else (half_yearly if half_yearly is not None else quarterly))

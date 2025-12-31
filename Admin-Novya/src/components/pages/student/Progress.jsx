@@ -40,7 +40,7 @@
 
 // ChartJS.register(BarElement, CategoryScale, LinearScale, Legend, Tooltip);
 
-// const subjects = ["Math", "Science", "English", "History"];
+// const subjects = ["Math", "Biology", "Physics", "English", "History"];
 
 // // 🔹 Utility: Generate random student data
 // const generateStudent = (id, name) => {
@@ -384,7 +384,7 @@
 //                                 <td>{s.id}</td>
 //                                 <td>{s.name}</td>
 //                                 {subjects.map((sub) => (
-//                                   <td key={sub}>{s.scores[sub]}%</td>
+//                                   <td key={sub}>{(s.scores && s.scores[sub] !== undefined && s.scores[sub] !== null) ? s.scores[sub] : 0}%</td>
 //                                 ))}
 //                                 <td>
 //                                   <strong>{s.average}%</strong>
@@ -522,7 +522,7 @@ import { getProgressData } from "../../../api";
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Legend, Tooltip);
 
-const subjects = ["Math", "Science", "English", "History"];
+const subjects = ["Math", "Biology", "Physics", "English", "History"];
 
 const calcSubjectAvg = (students) => {
   const avg = {};
@@ -566,7 +566,11 @@ const Progress = () => {
         
         const result = await getProgressData(adminEmail);
         
+        console.log("Progress API Response:", result);
+        console.log("Progress API Response - Full JSON:", JSON.stringify(result, null, 2));
+        
         if (result.error) {
+          console.error("Progress API Error:", result.error);
           setError(result.error);
           setClassData([]);
         } else {
@@ -574,9 +578,17 @@ const Progress = () => {
           // Backend returns: { classes: { "Class 7": [...], "Class 8": [...] } }
           // Store raw data first
           const rawData = [];
-          if (result.classes) {
+          console.log("Result classes:", result.classes);
+          if (result.classes && Object.keys(result.classes).length > 0) {
             Object.keys(result.classes).forEach((className) => {
               const students = result.classes[className].map((student) => {
+                console.log(`📝 Processing student ${student.name} (ID: ${student.student_id}):`, {
+                  school_scores_avg: student.school_scores_avg,
+                  school_scores_quarterly: student.school_scores_quarterly,
+                  school_scores_halfyearly: student.school_scores_halfyearly,
+                  school_scores_annual: student.school_scores_annual,
+                });
+                
                 return {
                   id: `S${student.student_id}`,
                   name: student.name,
@@ -600,8 +612,11 @@ const Progress = () => {
                 rawStudents: students,
               });
             });
+          } else {
+            console.warn("No classes found in response or classes object is empty");
           }
           
+          console.log("Raw class data:", rawData);
           setRawClassData(rawData);
         }
       } catch (err) {
@@ -626,28 +641,33 @@ const Progress = () => {
         // Select scores based on exam type filter
         let scores = {};
         if (selectedExamType === "Quarterly") {
-          scores = student.scoresQuarterly;
+          scores = student.scoresQuarterly || {};
         } else if (selectedExamType === "Half-Yearly") {
-          scores = student.scoresHalfyearly;
+          scores = student.scoresHalfyearly || {};
         } else if (selectedExamType === "Annual") {
-          scores = student.scoresAnnual;
+          scores = student.scoresAnnual || {};
         } else {
           // Average (default)
-          scores = student.scoresAvg;
+          scores = student.scoresAvg || {};
         }
         
-        // Map to standard subject names - backend now normalizes to: Mathematics, Science, English, History, Computer
+        console.log(`  📊 Student ${student.name} - Exam Type: ${selectedExamType}, Scores object:`, scores);
+        
+        // Map to standard subject names - backend now normalizes to: Mathematics, Biology, Physics, English, History, Computer
         // Backend returns normalized subject names, so we can directly map them
         const findScore = (standardName, possibleKeys) => {
           if (!scores || Object.keys(scores).length === 0) {
+            console.log(`    ⚠️ No scores object or empty for ${standardName}`);
             return 0;
           }
           
           const scoreKeys = Object.keys(scores);
+          console.log(`    🔍 Looking for ${standardName}, available keys:`, scoreKeys);
           
           // First check for exact standard name match (backend normalizes to this)
           // Note: 0 is a valid score, so we check for undefined/null only
           if (scores[standardName] !== undefined && scores[standardName] !== null) {
+            console.log(`    ✅ Found exact match: ${standardName} = ${scores[standardName]}`);
             return scores[standardName];
           }
           
@@ -655,11 +675,13 @@ const Progress = () => {
           for (const key of possibleKeys) {
             // Check exact match
             if (scores[key] !== undefined && scores[key] !== null) {
+              console.log(`    ✅ Found exact key match: ${key} = ${scores[key]}`);
               return scores[key];
             }
             // Check case-insensitive match
             const foundKey = scoreKeys.find(k => k.toLowerCase().trim() === key.toLowerCase().trim());
             if (foundKey !== undefined && scores[foundKey] !== undefined && scores[foundKey] !== null) {
+              console.log(`    ✅ Found case-insensitive match: ${foundKey} = ${scores[foundKey]}`);
               return scores[foundKey];
             }
             // Check partial match (for variations like "Social Studies" matching "social")
@@ -669,27 +691,55 @@ const Progress = () => {
               return kLower.includes(keyLower) || keyLower.includes(kLower);
             });
             if (partialMatch !== undefined && scores[partialMatch] !== undefined && scores[partialMatch] !== null) {
+              console.log(`    ✅ Found partial match: ${partialMatch} = ${scores[partialMatch]}`);
               return scores[partialMatch];
             }
           }
+          console.log(`    ❌ No match found for ${standardName}`);
           return 0;
         };
         
         const mappedScores = {
           Math: findScore("Mathematics", ["Math", "Mathematics", "MATHS", "maths", "Maths", "mathematics", "MATH", "math"]),
-          Science: findScore("Science", ["Science", "SCIENCE", "science", "sci", "SCI", "Sciences", "SCIENCES", "sciences"]),
+          Biology: findScore("Biology", ["Biology", "BIOLOGY", "biology", "bio", "BIO", "Bio", "biological", "BIOLOGICAL", "Science", "SCIENCE", "science"]), // Also check Science as fallback
+          Physics: findScore("Physics", ["Physics", "PHYSICS", "physics", "phy", "PHY", "Phy", "physical", "PHYSICAL", "Science", "SCIENCE", "science"]), // Also check Science as fallback
           English: findScore("English", ["English", "ENGLISH", "english", "eng", "ENG", "Eng"]),
           History: findScore("History", ["History", "Social Studies", "SocialScience", "SOCIAL STUDIES", "social studies", "social", "Social", "SOCIAL", "SST", "sst", "SocialStudies"]),
+          Hindi: findScore("Hindi", ["Hindi", "HINDI", "hindi", "hin", "HIN", "Hin"]),
+          Telugu: findScore("Telugu", ["Telugu", "TELUGU", "telugu", "tel", "TEL", "Tel"]),
         };
         
-        // Find top subject
-        const topSubjectEntry = Object.entries(mappedScores).reduce((a, b) => 
-          mappedScores[a[0]] > mappedScores[b[0]] ? a : b
-        );
-        const topSubject = topSubjectEntry[0];
+        // Ensure all subject keys exist with at least 0 value
+        const allSubjects = ["Math", "Biology", "Physics", "English", "History", "Hindi", "Telugu"];
+        allSubjects.forEach(sub => {
+          if (mappedScores[sub] === undefined || mappedScores[sub] === null) {
+            mappedScores[sub] = 0;
+          }
+        });
         
-        // Calculate average of mapped scores
-        const scoreValues = Object.values(mappedScores).filter(v => v > 0);
+        console.log(`  📊 Mapped scores for ${student.name}:`, mappedScores);
+        console.log(`  📊 Mapped scores keys:`, Object.keys(mappedScores));
+        console.log(`  📊 Mapped scores values:`, Object.values(mappedScores));
+        
+        // Find top subject - handle empty scores
+        const scoreEntries = Object.entries(mappedScores);
+        let topSubject = "N/A";
+        if (scoreEntries.length > 0) {
+          // Filter out 0 scores for top subject calculation, but keep all scores for display
+          const nonZeroScores = scoreEntries.filter(([_, score]) => score > 0);
+          if (nonZeroScores.length > 0) {
+            const topSubjectEntry = nonZeroScores.reduce((a, b) => 
+              mappedScores[a[0]] > mappedScores[b[0]] ? a : b
+            );
+            topSubject = topSubjectEntry[0] || "N/A";
+          } else {
+            // If all scores are 0, pick the first subject
+            topSubject = scoreEntries[0][0] || "N/A";
+          }
+        }
+        
+        // Calculate average of mapped scores (include 0 scores in calculation)
+        const scoreValues = Object.values(mappedScores);
         const calculatedAvg = scoreValues.length > 0 
           ? Math.round((scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length) * 10) / 10
           : student.average_score || 0;
@@ -750,6 +800,17 @@ const Progress = () => {
         <Alert variant="warning">
           <Alert.Heading>Unable to load data</Alert.Heading>
           <p>{error}</p>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (!classData || classData.length === 0) {
+    return (
+      <div className="p-3">
+        <Alert variant="info">
+          <Alert.Heading>No Data Available</Alert.Heading>
+          <p>No student progress data found. Please check if students are registered and approved.</p>
         </Alert>
       </div>
     );
@@ -836,7 +897,7 @@ const Progress = () => {
             {subjects.map((sub) => (
               <Col xs={6} key={sub}>
                 <small>
-                  {sub}: <strong>{s.scores[sub]}%</strong>
+                  {sub}: <strong>{(s.scores && s.scores[sub] !== undefined && s.scores[sub] !== null) ? s.scores[sub] : 0}%</strong>
                 </small>
               </Col>
             ))}
