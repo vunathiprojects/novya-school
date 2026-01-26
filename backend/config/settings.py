@@ -1,21 +1,27 @@
-# config/settings.py
 import os
 from pathlib import Path
 from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# -----------------------------
-# SECURITY SETTINGS (NO .env)
-# -----------------------------
+# =========================================================
+# SECURITY
+# =========================================================
 SECRET_KEY = "CHANGE_THIS_TO_A_SECURE_KEY"
-DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com"]
+DEBUG = True   # ⚠️ set False in production later
 
-# -----------------------------
-# INSTALLED APPS
-# -----------------------------
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+    "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
+
+]
+
+# =========================================================
+# APPLICATIONS
+# =========================================================
 INSTALLED_APPS = [
+    # Django default
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -25,16 +31,16 @@ INSTALLED_APPS = [
 
     # Third-party
     "rest_framework",
+    "rest_framework.authtoken",
     "corsheaders",
 
     # Local apps
     "accounts",
-   
 ]
 
-# -----------------------------
+# =========================================================
 # MIDDLEWARE
-# -----------------------------
+# =========================================================
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -43,18 +49,18 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "django.middleware.common.BrokenLinkEmailsMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
 
-# -----------------------------
+# =========================================================
 # TEMPLATES
-# -----------------------------
+# =========================================================
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -69,9 +75,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# -----------------------------
-# POSTGRESQL DATABASE (HARDCODED)
-# -----------------------------
+# =========================================================
+# DATABASE (PostgreSQL - RDS)
+# =========================================================
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -83,9 +89,11 @@ DATABASES = {
     }
 }
 
-# -----------------------------
-# PASSWORD VALIDATION
-# -----------------------------
+# =========================================================
+# AUTH / USER MODEL
+# =========================================================
+AUTH_USER_MODEL = "accounts.User"
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -93,41 +101,75 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# -----------------------------
+# =========================================================
 # INTERNATIONALIZATION
-# -----------------------------
+# =========================================================
 LANGUAGE_CODE = "en-us"
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
-# -----------------------------
+# =========================================================
 # STATIC FILES
-# -----------------------------
+# =========================================================
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-
-
-# -----------------------------
-# DRF + JWT SETTINGS
-# -----------------------------
+# =========================================================
+# DJANGO REST FRAMEWORK
+# =========================================================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
+        "rest_framework.permissions.AllowAny",   # ✅ public APIs allowed
     ),
 }
 
+# =========================================================
+# JWT CONFIG
+# =========================================================
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": False,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# -----------------------------
-# CORS
-# -----------------------------
+# =========================================================
+# CORS CONFIG (S3 FRONTEND)
+# =========================================================
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
+# =========================================================
+# CSRF (for API usage)
+# =========================================================
+CSRF_TRUSTED_ORIGINS = [
+    "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
+    "http://novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
+]
+
+# =========================================================
+# LOGGING (IMPORTANT FOR DEBUGGING)
+# =========================================================
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG",
+    },
+}
