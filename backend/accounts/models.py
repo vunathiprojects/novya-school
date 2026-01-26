@@ -1,14 +1,19 @@
-
 from django.db import models
 
+
 # ==========================
-# LOGIN / SIGNUP TABLE
+# ADMIN USER (LOGIN TABLE)
 # ==========================
 class AdminUser(models.Model):
     admin_id = models.AutoField(primary_key=True)
-    email = models.CharField(max_length=255, unique=True)
-    username = models.CharField(max_length=150)
+
+    full_name = models.CharField(max_length=255)   # moved here (important)
+    email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
+
+    is_active = models.BooleanField(default=True)
+    is_admin = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -20,20 +25,21 @@ class AdminUser(models.Model):
 
 
 # ==========================
-# PROFILE TABLE
+# ADMIN PROFILE TABLE
 # ==========================
 class AdminUserProfile(models.Model):
-    id = models.AutoField(primary_key=True)
+    profile_id = models.AutoField(primary_key=True)
+
     user = models.OneToOneField(
         AdminUser,
-        to_field="admin_id",
-        db_column="user_id",
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        related_name="profile"
     )
-    full_name = models.CharField(max_length=255)
-    phone = models.CharField(max_length=15)
-    school_name = models.CharField(max_length=255)
-    school_address = models.TextField()
+
+    phone = models.CharField(max_length=15, blank=True, null=True)
+    school_name = models.CharField(max_length=255, blank=True, null=True)
+    school_address = models.TextField(blank=True, null=True)
+
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -41,4 +47,4 @@ class AdminUserProfile(models.Model):
         managed = True   # ✅ Django WILL create and manage this table
 
     def __str__(self):
-        return self.full_name
+        return f"Profile of {self.user.email}"
