@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # -----------------------------
 SECRET_KEY = "CHANGE_THIS_TO_A_SECURE_KEY"
 DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost", "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com", "*"]
 
 # -----------------------------
 # INSTALLED APPS
