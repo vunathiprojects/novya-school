@@ -75,10 +75,10 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": "novya",
-        "USER": "postgres",
-        "PASSWORD": "12345",
-        "HOST": "127.0.0.1",
+        "NAME": "postgres",
+        "USER": "postgres_novya",
+        "PASSWORD": "sa!S#nday%4567",
+        "HOST": "novyadatabase.cu7o0gw6ifh6.us-east-1.rds.amazonaws.com",
         "PORT": "5432",
     }
 }
