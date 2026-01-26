@@ -1,18 +1,5 @@
-# from django.db import models
-
-# class AdminUser(models.Model):
-#     admin_id = models.AutoField(primary_key=True)
-#     email = models.CharField(max_length=255, unique=True)
-#     username = models.CharField(max_length=150)
-#     password = models.CharField(max_length=255)
-#     created_at = models.DateTimeField(auto_now_add=True)
-
-#     class Meta:
-#         db_table = "ad_user"
-#         managed = False  # VERY IMPORTANT — Django will NOT create or modify this table
 
 from django.db import models
-
 
 # ==========================
 # LOGIN / SIGNUP TABLE
@@ -26,7 +13,10 @@ class AdminUser(models.Model):
 
     class Meta:
         db_table = "ad_user"
-        managed = False  # Django will NOT create/modify this table
+        managed = True   # ✅ Django WILL create and manage this table
+
+    def __str__(self):
+        return self.email
 
 
 # ==========================
@@ -48,4 +38,7 @@ class AdminUserProfile(models.Model):
 
     class Meta:
         db_table = "ad_user_profile"
-        managed = False  # Django will NOT create/modify this table
+        managed = True   # ✅ Django WILL create and manage this table
+
+    def __str__(self):
+        return self.full_name
