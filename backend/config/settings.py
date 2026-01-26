@@ -13,7 +13,7 @@ DEBUG = True   # ⚠️ set False in production later
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
-    "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com"
+    "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
     "*"
 
 ]
