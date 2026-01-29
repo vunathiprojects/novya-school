@@ -1,14 +1,16 @@
 import json
+
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from django.db import connection, transaction, IntegrityError
+from django.db import connection
 from django.contrib.auth.hashers import make_password, check_password
+from django.utils.timezone import now
 
 
 # =====================================================
 # ADMIN SIGNUP
 # TABLE: ad_user
-# PRIMARY KEY: admin_id
+# PK: admin_id
 # =====================================================
 @csrf_exempt
 def signup(request):
@@ -30,17 +32,24 @@ def signup(request):
     hashed_password = make_password(password)
 
     try:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO ad_user (full_name, email, password, is_active, is_admin)
-                    VALUES (%s, %s, %s, TRUE, TRUE)
-                    RETURNING admin_id;
-                    """,
-                    [full_name, email, hashed_password]
-                )
-                admin_id = cursor.fetchone()[0]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO ad_user
+                (full_name, email, password, is_active, is_admin, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING admin_id;
+                """,
+                [
+                    full_name,
+                    email,
+                    hashed_password,
+                    True,
+                    True,
+                    now()
+                ]
+            )
+            admin_id = cursor.fetchone()[0]
 
         return JsonResponse(
             {
@@ -50,17 +59,8 @@ def signup(request):
             status=201
         )
 
-    except IntegrityError:
-        return JsonResponse(
-            {"error": "Email already exists"},
-            status=409
-        )
-
     except Exception as e:
-        return JsonResponse(
-            {"error": f"Signup failed: {str(e)}"},
-            status=500
-        )
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 # =====================================================
@@ -92,12 +92,12 @@ def login(request):
                 """,
                 [email]
             )
-            user = cursor.fetchone()
+            row = cursor.fetchone()
 
-        if not user:
+        if not row:
             return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-        admin_id, full_name, hashed_password = user
+        admin_id, full_name, hashed_password = row
 
         if not check_password(password, hashed_password):
             return JsonResponse({"error": "Invalid credentials"}, status=401)
@@ -115,14 +115,11 @@ def login(request):
         )
 
     except Exception as e:
-        return JsonResponse(
-            {"error": f"Login failed: {str(e)}"},
-            status=500
-        )
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 # =====================================================
-# ADMIN PROFILE (GET)
+# ADMIN PROFILE - GET
 # TABLE: ad_user_profile
 # =====================================================
 @csrf_exempt
@@ -157,14 +154,11 @@ def profile_get(request, email):
         })
 
     except Exception as e:
-        return JsonResponse(
-            {"error": f"Profile fetch failed: {str(e)}"},
-            status=500
-        )
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 # =====================================================
-# ADMIN PROFILE (UPDATE)
+# ADMIN PROFILE - UPDATE
 # =====================================================
 @csrf_exempt
 def profile_update(request, email):
@@ -181,51 +175,47 @@ def profile_update(request, email):
     school_address = data.get("school_address")
 
     try:
-        with transaction.atomic():
-            with connection.cursor() as cursor:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT admin_id FROM ad_user WHERE email = %s",
+                [email]
+            )
+            row = cursor.fetchone()
+
+            if not row:
+                return JsonResponse({"error": "Admin not found"}, status=404)
+
+            admin_id = row[0]
+
+            cursor.execute(
+                "SELECT profile_id FROM ad_user_profile WHERE user_id = %s",
+                [admin_id]
+            )
+            exists = cursor.fetchone()
+
+            if exists:
                 cursor.execute(
-                    "SELECT admin_id FROM ad_user WHERE email = %s",
-                    [email]
+                    """
+                    UPDATE ad_user_profile
+                    SET phone=%s,
+                        school_name=%s,
+                        school_address=%s,
+                        updated_at=NOW()
+                    WHERE user_id=%s
+                    """,
+                    [phone, school_name, school_address, admin_id]
                 )
-                row = cursor.fetchone()
-
-                if not row:
-                    return JsonResponse({"error": "Admin not found"}, status=404)
-
-                admin_id = row[0]
-
+            else:
                 cursor.execute(
-                    "SELECT profile_id FROM ad_user_profile WHERE user_id = %s",
-                    [admin_id]
+                    """
+                    INSERT INTO ad_user_profile
+                    (user_id, phone, school_name, school_address)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    [admin_id, phone, school_name, school_address]
                 )
-                exists = cursor.fetchone()
-
-                if exists:
-                    cursor.execute(
-                        """
-                        UPDATE ad_user_profile
-                        SET phone=%s,
-                            school_name=%s,
-                            school_address=%s,
-                            updated_at=NOW()
-                        WHERE user_id=%s
-                        """,
-                        [phone, school_name, school_address, admin_id]
-                    )
-                else:
-                    cursor.execute(
-                        """
-                        INSERT INTO ad_user_profile
-                        (user_id, phone, school_name, school_address)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        [admin_id, phone, school_name, school_address]
-                    )
 
         return JsonResponse({"message": "Profile updated successfully"})
 
     except Exception as e:
-        return JsonResponse(
-            {"error": f"Profile update failed: {str(e)}"},
-            status=500
-        )
+        return JsonResponse({"error": str(e)}, status=500)
