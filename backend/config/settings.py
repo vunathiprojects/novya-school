@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from datetime import timedelta
+from corsheaders.defaults import default_headers, default_methods
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -8,14 +9,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY
 # =========================================================
 SECRET_KEY = "CHANGE_THIS_TO_A_SECURE_KEY"
-DEBUG = True   # ⚠️ set False in production later
+DEBUG = True   # ⚠️ Set False in production
 
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
-    "*"
-
 ]
 
 # =========================================================
@@ -35,7 +34,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
 
-    # Local apps
+    # Local
     "accounts",
 ]
 
@@ -43,7 +42,7 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 # =========================================================
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # MUST be first
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -77,7 +76,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 # =========================================================
-# DATABASE (PostgreSQL - RDS)
+# DATABASE (PostgreSQL RDS)
 # =========================================================
 DATABASES = {
     "default": {
@@ -91,10 +90,8 @@ DATABASES = {
 }
 
 # =========================================================
-# AUTH / USER MODEL
+# PASSWORD VALIDATION
 # =========================================================
-#AUTH_USER_MODEL = "accounts.User"
-
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -129,7 +126,7 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.AllowAny",   # ✅ public APIs allowed
+        "rest_framework.permissions.AllowAny",
     ),
 }
 
@@ -145,13 +142,20 @@ SIMPLE_JWT = {
 }
 
 # =========================================================
-# CORS CONFIG (S3 FRONTEND)
+# CORS CONFIG  ✅ (FIXED)
 # =========================================================
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "authorization",
+    "content-type",
+]
+
+CORS_ALLOW_METHODS = list(default_methods)
+
 # =========================================================
-# CSRF (for API usage)
+# CSRF CONFIG
 # =========================================================
 CSRF_TRUSTED_ORIGINS = [
     "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
@@ -159,7 +163,7 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 # =========================================================
-# LOGGING (IMPORTANT FOR DEBUGGING)
+# LOGGING
 # =========================================================
 LOGGING = {
     "version": 1,
