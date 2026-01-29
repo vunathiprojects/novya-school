@@ -3,11 +3,12 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import connection
 from django.contrib.auth.hashers import make_password, check_password
-from django.utils.timezone import now
 
 
 # =====================================================
 # ADMIN SIGNUP
+# TABLE: ad_user
+# PRIMARY KEY: admin_id
 # =====================================================
 @csrf_exempt
 def signup(request):
@@ -34,10 +35,10 @@ def signup(request):
                 """
                 INSERT INTO ad_user
                 (full_name, email, password, is_active, is_admin, created_at)
-                VALUES (%s, %s, %s, TRUE, TRUE, %s)
+                VALUES (%s, %s, %s, TRUE, TRUE, NOW())
                 RETURNING admin_id;
                 """,
-                [full_name, email, hashed_password, now()]
+                [full_name, email, hashed_password]
             )
 
             admin_id = cursor.fetchone()[0]
@@ -51,8 +52,7 @@ def signup(request):
         )
 
     except Exception as e:
-        # 🔴 IMPORTANT: print real DB error
-        print("SIGNUP ERROR:", e)
+        # IMPORTANT: show real DB error
         return JsonResponse({"error": str(e)}, status=500)
 
 
@@ -108,5 +108,4 @@ def login(request):
         )
 
     except Exception as e:
-        print("LOGIN ERROR:", e)
         return JsonResponse({"error": str(e)}, status=500)
