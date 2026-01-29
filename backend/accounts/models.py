@@ -5,9 +5,13 @@ from django.db import models
 # ADMIN USER (LOGIN TABLE)
 # ==========================
 class AdminUser(models.Model):
-    admin_id = models.AutoField(primary_key=True)
+    # Django REQUIRED primary key
+    id = models.BigAutoField(primary_key=True)
 
-    full_name = models.CharField(max_length=255)   # moved here (important)
+    # Business/admin identifier (not PK)
+    admin_id = models.IntegerField(unique=True)
+
+    full_name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
 
@@ -18,7 +22,7 @@ class AdminUser(models.Model):
 
     class Meta:
         db_table = "ad_user"
-        managed = True   # ✅ Django WILL create and manage this table
+        managed = True
 
     def __str__(self):
         return self.email
@@ -28,7 +32,11 @@ class AdminUser(models.Model):
 # ADMIN PROFILE TABLE
 # ==========================
 class AdminUserProfile(models.Model):
-    profile_id = models.AutoField(primary_key=True)
+    # Django REQUIRED primary key
+    id = models.BigAutoField(primary_key=True)
+
+    # Business/profile identifier (not PK)
+    profile_id = models.IntegerField(unique=True)
 
     user = models.OneToOneField(
         AdminUser,
@@ -44,7 +52,7 @@ class AdminUserProfile(models.Model):
 
     class Meta:
         db_table = "ad_user_profile"
-        managed = True   # ✅ Django WILL create and manage this table
+        managed = True
 
     def __str__(self):
         return f"Profile of {self.user.email}"
