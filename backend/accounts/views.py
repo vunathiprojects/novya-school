@@ -5,9 +5,11 @@ from django.db import connection
 from django.contrib.auth.hashers import make_password, check_password
 
 
-# ======================================================
-# SIGNUP
-# ======================================================
+# =====================================================
+# ADMIN SIGNUP
+# TABLE: ad_user
+# PRIMARY KEY: admin_id
+# =====================================================
 @csrf_exempt
 def signup(request):
     if request.method != "POST":
@@ -15,7 +17,7 @@ def signup(request):
 
     try:
         data = json.loads(request.body.decode("utf-8"))
-    except:
+    except Exception:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     full_name = data.get("fullName")
@@ -23,7 +25,7 @@ def signup(request):
     password = data.get("password")
 
     if not full_name or not email or not password:
-        return JsonResponse({"error": "All fields required"}, status=400)
+        return JsonResponse({"error": "All fields are required"}, status=400)
 
     hashed_password = make_password(password)
 
@@ -31,16 +33,20 @@ def signup(request):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO ad_user (full_name, email, password)
-                VALUES (%s, %s, %s)
+                INSERT INTO ad_user (full_name, email, password, is_active, is_admin)
+                VALUES (%s, %s, %s, TRUE, TRUE)
                 RETURNING admin_id;
                 """,
                 [full_name, email, hashed_password]
             )
+
             admin_id = cursor.fetchone()[0]
 
         return JsonResponse(
-            {"message": "Signup successful!", "admin_id": admin_id},
+            {
+                "message": "Signup successful",
+                "admin_id": admin_id
+            },
             status=201
         )
 
@@ -48,9 +54,9 @@ def signup(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# ======================================================
-# LOGIN
-# ======================================================
+# =====================================================
+# ADMIN LOGIN
+# =====================================================
 @csrf_exempt
 def login(request):
     if request.method != "POST":
@@ -58,47 +64,55 @@ def login(request):
 
     try:
         data = json.loads(request.body.decode("utf-8"))
-    except:
+    except Exception:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     email = data.get("email")
     password = data.get("password")
 
     if not email or not password:
-        return JsonResponse({"error": "Email & Password required"}, status=400)
+        return JsonResponse({"error": "Email and password required"}, status=400)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT admin_id, full_name, password
-            FROM ad_user
-            WHERE email = %s
-            """,
-            [email]
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT admin_id, full_name, password
+                FROM ad_user
+                WHERE email = %s AND is_active = TRUE
+                """,
+                [email]
+            )
+            user = cursor.fetchone()
+
+        if not user:
+            return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+        admin_id, full_name, hashed_password = user
+
+        if not check_password(password, hashed_password):
+            return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+        return JsonResponse(
+            {
+                "message": "Login successful",
+                "admin": {
+                    "admin_id": admin_id,
+                    "full_name": full_name,
+                    "email": email
+                }
+            },
+            status=200
         )
-        user = cursor.fetchone()
 
-    if not user:
-        return JsonResponse({"error": "Invalid email or password"}, status=401)
-
-    admin_id, full_name, hashed_password = user
-
-    if not check_password(password, hashed_password):
-        return JsonResponse({"error": "Invalid email or password"}, status=401)
-
-    return JsonResponse({
-        "message": "Login successful!",
-        "user": {
-            "admin_id": admin_id,
-            "full_name": full_name,
-            "email": email
-        }
-    }, status=200)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
-# ======================================================
-# PROFILE GET (by EMAIL)
-# ======================================================
+# =====================================================
+# ADMIN PROFILE (GET)
+# TABLE: ad_user_profile
+# =====================================================
 @csrf_exempt
 def profile_get(request, email):
     try:
@@ -116,27 +130,31 @@ def profile_get(request, email):
             row = cursor.fetchone()
 
         if not row:
-            return JsonResponse({
-                "phone": "",
-                "school_name": "",
-                "school_address": ""
-            })
+            return JsonResponse(
+                {
+                    "phone": "",
+                    "school_name": "",
+                    "school_address": ""
+                }
+            )
 
         phone, school_name, school_address = row
 
-        return JsonResponse({
-            "phone": phone,
-            "school_name": school_name,
-            "school_address": school_address
-        })
+        return JsonResponse(
+            {
+                "phone": phone,
+                "school_name": school_name,
+                "school_address": school_address
+            }
+        )
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# ======================================================
-# PROFILE UPDATE
-# ======================================================
+# =====================================================
+# ADMIN PROFILE (UPDATE)
+# =====================================================
 @csrf_exempt
 def profile_update(request, email):
     if request.method != "POST":
@@ -144,7 +162,7 @@ def profile_update(request, email):
 
     try:
         data = json.loads(request.body.decode("utf-8"))
-    except:
+    except Exception:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     phone = data.get("phone")
@@ -153,10 +171,9 @@ def profile_update(request, email):
 
     try:
         with connection.cursor() as cursor:
+            # get admin_id
             cursor.execute(
-                """
-                SELECT admin_id FROM ad_user WHERE email = %s
-                """,
+                "SELECT admin_id FROM ad_user WHERE email = %s",
                 [email]
             )
             row = cursor.fetchone()
@@ -166,10 +183,9 @@ def profile_update(request, email):
 
             admin_id = row[0]
 
+            # check profile
             cursor.execute(
-                """
-                SELECT profile_id FROM ad_user_profile WHERE user_id = %s
-                """,
+                "SELECT profile_id FROM ad_user_profile WHERE user_id = %s",
                 [admin_id]
             )
             exists = cursor.fetchone()
@@ -178,7 +194,10 @@ def profile_update(request, email):
                 cursor.execute(
                     """
                     UPDATE ad_user_profile
-                    SET phone=%s, school_name=%s, school_address=%s, updated_at=NOW()
+                    SET phone=%s,
+                        school_name=%s,
+                        school_address=%s,
+                        updated_at=NOW()
                     WHERE user_id=%s
                     """,
                     [phone, school_name, school_address, admin_id]
@@ -186,13 +205,14 @@ def profile_update(request, email):
             else:
                 cursor.execute(
                     """
-                    INSERT INTO ad_user_profile (user_id, phone, school_name, school_address)
+                    INSERT INTO ad_user_profile
+                    (user_id, phone, school_name, school_address)
                     VALUES (%s, %s, %s, %s)
                     """,
                     [admin_id, phone, school_name, school_address]
                 )
 
-        return JsonResponse({"message": "Profile updated successfully!"})
+        return JsonResponse({"message": "Profile updated successfully"})
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
