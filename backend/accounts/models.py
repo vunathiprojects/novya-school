@@ -5,11 +5,7 @@ from django.db import models
 # ADMIN USER (LOGIN TABLE)
 # ==========================
 class AdminUser(models.Model):
-    # Django REQUIRED primary key
-    id = models.BigAutoField(primary_key=True)
-
-    # Business/admin identifier (not PK)
-    admin_id = models.IntegerField(unique=True)
+    # Django auto-creates: id = BigAutoField(primary_key=True)
 
     full_name = models.CharField(max_length=255)
     email = models.EmailField(unique=True)
@@ -32,11 +28,7 @@ class AdminUser(models.Model):
 # ADMIN PROFILE TABLE
 # ==========================
 class AdminUserProfile(models.Model):
-    # Django REQUIRED primary key
-    id = models.BigAutoField(primary_key=True)
-
-    # Business/profile identifier (not PK)
-    profile_id = models.IntegerField(unique=True)
+    # Django auto-creates: id = BigAutoField(primary_key=True)
 
     user = models.OneToOneField(
         AdminUser,
