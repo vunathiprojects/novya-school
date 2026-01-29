@@ -3,11 +3,12 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import connection
 from django.contrib.auth.hashers import make_password, check_password
+from django.utils.timezone import now
 
 
-# ==========================
+# =====================================================
 # ADMIN SIGNUP
-# ==========================
+# =====================================================
 @csrf_exempt
 def signup(request):
     if request.method != "POST":
@@ -32,26 +33,32 @@ def signup(request):
             cursor.execute(
                 """
                 INSERT INTO ad_user
-                (full_name, email, password, is_active, is_admin)
-                VALUES (%s, %s, %s, TRUE, TRUE)
+                (full_name, email, password, is_active, is_admin, created_at)
+                VALUES (%s, %s, %s, TRUE, TRUE, %s)
                 RETURNING admin_id;
                 """,
-                [full_name, email, hashed_password]
+                [full_name, email, hashed_password, now()]
             )
+
             admin_id = cursor.fetchone()[0]
 
         return JsonResponse(
-            {"message": "Signup successful", "admin_id": admin_id},
+            {
+                "message": "Signup successful",
+                "admin_id": admin_id
+            },
             status=201
         )
 
     except Exception as e:
+        # 🔴 IMPORTANT: print real DB error
+        print("SIGNUP ERROR:", e)
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# ==========================
+# =====================================================
 # ADMIN LOGIN
-# ==========================
+# =====================================================
 @csrf_exempt
 def login(request):
     if request.method != "POST":
@@ -66,32 +73,40 @@ def login(request):
     password = data.get("password")
 
     if not email or not password:
-        return JsonResponse({"error": "Email & password required"}, status=400)
+        return JsonResponse({"error": "Email and password required"}, status=400)
 
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT admin_id, full_name, password
-            FROM ad_user
-            WHERE email = %s AND is_active = TRUE
-            """,
-            [email]
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT admin_id, full_name, password
+                FROM ad_user
+                WHERE email = %s AND is_active = TRUE
+                """,
+                [email]
+            )
+            user = cursor.fetchone()
+
+        if not user:
+            return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+        admin_id, full_name, hashed_password = user
+
+        if not check_password(password, hashed_password):
+            return JsonResponse({"error": "Invalid credentials"}, status=401)
+
+        return JsonResponse(
+            {
+                "message": "Login successful",
+                "admin": {
+                    "admin_id": admin_id,
+                    "full_name": full_name,
+                    "email": email
+                }
+            },
+            status=200
         )
-        user = cursor.fetchone()
 
-    if not user:
-        return JsonResponse({"error": "Invalid credentials"}, status=401)
-
-    admin_id, full_name, hashed_password = user
-
-    if not check_password(password, hashed_password):
-        return JsonResponse({"error": "Invalid credentials"}, status=401)
-
-    return JsonResponse({
-        "message": "Login successful",
-        "admin": {
-            "admin_id": admin_id,
-            "full_name": full_name,
-            "email": email
-        }
-    })
+    except Exception as e:
+        print("LOGIN ERROR:", e)
+        return JsonResponse({"error": str(e)}, status=500)
