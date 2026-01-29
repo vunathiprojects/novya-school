@@ -39,7 +39,6 @@ def signup(request):
                 """,
                 [full_name, email, hashed_password]
             )
-
             admin_id = cursor.fetchone()[0]
 
         return JsonResponse(
@@ -130,23 +129,19 @@ def profile_get(request, email):
             row = cursor.fetchone()
 
         if not row:
-            return JsonResponse(
-                {
-                    "phone": "",
-                    "school_name": "",
-                    "school_address": ""
-                }
-            )
+            return JsonResponse({
+                "phone": "",
+                "school_name": "",
+                "school_address": ""
+            })
 
         phone, school_name, school_address = row
 
-        return JsonResponse(
-            {
-                "phone": phone,
-                "school_name": school_name,
-                "school_address": school_address
-            }
-        )
+        return JsonResponse({
+            "phone": phone,
+            "school_name": school_name,
+            "school_address": school_address
+        })
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -171,7 +166,6 @@ def profile_update(request, email):
 
     try:
         with connection.cursor() as cursor:
-            # get admin_id
             cursor.execute(
                 "SELECT admin_id FROM ad_user WHERE email = %s",
                 [email]
@@ -183,7 +177,6 @@ def profile_update(request, email):
 
             admin_id = row[0]
 
-            # check profile
             cursor.execute(
                 "SELECT profile_id FROM ad_user_profile WHERE user_id = %s",
                 [admin_id]
