@@ -1,7 +1,9 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.db import connection
-from .views import get_admin_school
+#from .views import get_admin_school
+from .utils import get_admin_school
+
 
 
 # Get all parent registrations for admin's school
