@@ -15,7 +15,7 @@ ALLOWED_HOSTS = [
     "54.211.37.202",
     "localhost",
     "127.0.0.1",
-    "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
+    "Novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com ",
     "novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
 ]
 
@@ -166,7 +166,7 @@ CORS_ALLOW_METHODS = list(default_methods)
 # =========================================================
 CSRF_TRUSTED_ORIGINS = [
     "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
-    "http://novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
+    "http://Novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
 ]
 
 # =========================================================
