@@ -15,7 +15,7 @@ ALLOWED_HOSTS = [
     "54.211.37.202",
     "localhost",
     "127.0.0.1",
-    "Novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com ",
+    "Novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
     "novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
 ]
 
