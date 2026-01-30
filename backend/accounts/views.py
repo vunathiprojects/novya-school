@@ -27,6 +27,7 @@ def signup(request):
 
     try:
         with connection.cursor() as cursor:
+            # Check if email exists
             cursor.execute("SELECT 1 FROM ad_user WHERE email = %s", [email])
             if cursor.fetchone():
                 return JsonResponse({"error": "Email already exists"}, status=400)
@@ -51,7 +52,6 @@ def signup(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
 
 # =====================================================
 # ADMIN LOGIN
