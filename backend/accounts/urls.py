@@ -50,9 +50,9 @@ urlpatterns = [
     # =========================
     #path("signup/", signup, name="signup"),
     #path("login/", login, name="login"),
-    path("signup/", signup),
-    path("login/", login),
-    path("profile/", profile_get),
+    #path("signup/", signup),
+    #path("login/", login),
+    #path("profile/", profile_get),
     path("signup/", views.signup),
     path("login/", views.login),
     
@@ -60,9 +60,10 @@ urlpatterns = [
     # =========================
     # PROFILE
     # =========================
-    path("profile/<str:email>/", profile_get, name="profile_get"),
-    path("profile/update/<str:email>/", profile_update, name="profile_update"),
+    #path("profile/<str:email>/", profile_get, name="profile_get"),
+    #path("profile/update/<str:email>/", profile_update, name="profile_update"),
     path("profile/<str:email>/", views.profile_get),
+    path("profile/update/<str:email>/", views.profile_update),
 
     # =========================
     # DASHBOARD
