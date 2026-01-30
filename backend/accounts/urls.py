@@ -3,7 +3,7 @@ from django.urls import path
 # =========================
 # IMPORT AUTH & PROFILE VIEWS
 # =========================
-from .views import (
+from . import views (
     signup,
     login,
     profile_get,
@@ -47,14 +47,18 @@ urlpatterns = [
     # =========================
     # AUTH
     # =========================
-    path("signup/", signup, name="signup"),
-    path("login/", login, name="login"),
+    #path("signup/", signup, name="signup"),
+    #path("login/", login, name="login"),
+    path("signup/", views.signup),
+    path("login/", views.login),
+    
 
     # =========================
     # PROFILE
     # =========================
     path("profile/<str:email>/", profile_get, name="profile_get"),
     path("profile/update/<str:email>/", profile_update, name="profile_update"),
+    path("profile/<str:email>/", views.profile_get),
 
     # =========================
     # DASHBOARD
