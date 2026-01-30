@@ -8,7 +8,6 @@ from django.contrib.auth.hashers import make_password, check_password
 # =====================================================
 # ADMIN SIGNUP
 # TABLE: ad_user
-# PRIMARY KEY: admin_id
 # =====================================================
 @csrf_exempt
 def signup(request):
@@ -27,14 +26,18 @@ def signup(request):
     if not full_name or not email or not password:
         return JsonResponse({"error": "All fields are required"}, status=400)
 
-    hashed_password = make_password(password)
-
     try:
         with connection.cursor() as cursor:
+            # Check if email already exists
+            cursor.execute("SELECT 1 FROM ad_user WHERE email = %s", [email])
+            if cursor.fetchone():
+                return JsonResponse({"error": "Email already exists"}, status=400)
+
+            hashed_password = make_password(password)
+
             cursor.execute(
                 """
-                INSERT INTO ad_user
-                (full_name, email, password, is_active, is_admin, created_at)
+                INSERT INTO ad_user (full_name, email, password, is_active, is_admin, created_at)
                 VALUES (%s, %s, %s, TRUE, TRUE, NOW())
                 RETURNING admin_id;
                 """,
@@ -52,7 +55,6 @@ def signup(request):
         )
 
     except Exception as e:
-        # IMPORTANT: show real DB error
         return JsonResponse({"error": str(e)}, status=500)
 
 
@@ -109,3 +111,10 @@ def login(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
+
+# =====================================================
+# PROFILE API (FIXES YOUR IMPORT ERROR)
+# =====================================================
+def profile_get(request):
+    return JsonResponse({"message": "Profile API working"})
