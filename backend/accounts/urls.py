@@ -55,6 +55,8 @@ urlpatterns = [
     #path("profile/", profile_get),
     path("signup/", views.signup),
     path("login/", views.login),
+    path("admin/", admin.site.urls),
+    path("api/", include("accounts.urls")),
     
 
     # =========================
