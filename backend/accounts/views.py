@@ -196,7 +196,20 @@ def profile_update(request):
 # REQUIRED for other modules
 def get_admin_school(*args, **kwargs):
     return None
+def get_admin_school(email):
+    from django.db import connection
 
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT school_name FROM ad_user WHERE email = %s",
+            [email]
+        )
+        row = cursor.fetchone()
+
+    if row:
+        return row[0]
+
+    return None
 
 # Dummy APIs to avoid errors
 def get_overview_data(request):
