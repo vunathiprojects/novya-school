@@ -149,7 +149,7 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOWED_ORIGINS = [
-    "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
+    "https://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -165,8 +165,8 @@ CORS_ALLOW_METHODS = list(default_methods)
 # ✅ CSRF CONFIG (FIXED)
 # =========================================================
 CSRF_TRUSTED_ORIGINS = [
-    "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
-    "http://novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
+    "https://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
+    "https://novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
 ]
 
 # =========================================================
