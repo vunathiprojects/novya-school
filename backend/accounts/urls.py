@@ -18,19 +18,10 @@ from .parent_management import (
 )
 
 urlpatterns = [
-
-    # =========================
-    # AUTH
-    # =========================
     path("signup/", views.signup),
     path("login/", views.login),
-
-    # =========================
-    # PROFILE
-    # =========================
     path("profile/<str:email>/", views.profile_get),
     path("profile/update/<str:email>/", views.profile_update),
-
     # =========================
     # DASHBOARD
     # =========================
