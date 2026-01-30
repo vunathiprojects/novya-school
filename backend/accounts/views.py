@@ -7,7 +7,6 @@ from django.contrib.auth.hashers import make_password, check_password
 
 # =====================================================
 # ADMIN SIGNUP
-# TABLE: ad_user
 # =====================================================
 @csrf_exempt
 def signup(request):
@@ -28,7 +27,6 @@ def signup(request):
 
     try:
         with connection.cursor() as cursor:
-            # Check if email already exists
             cursor.execute("SELECT 1 FROM ad_user WHERE email = %s", [email])
             if cursor.fetchone():
                 return JsonResponse({"error": "Email already exists"}, status=400)
@@ -47,10 +45,7 @@ def signup(request):
             admin_id = cursor.fetchone()[0]
 
         return JsonResponse(
-            {
-                "message": "Signup successful",
-                "admin_id": admin_id
-            },
+            {"message": "Signup successful", "admin_id": admin_id},
             status=201
         )
 
@@ -114,7 +109,63 @@ def login(request):
 
 
 # =====================================================
-# PROFILE API (FIXES YOUR IMPORT ERROR)
+# PROFILE GET
 # =====================================================
-def profile_get(request):
-    return JsonResponse({"message": "Profile API working"})
+def profile_get(request, email):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT admin_id, full_name, email
+                FROM ad_user
+                WHERE email = %s
+                """,
+                [email]
+            )
+            user = cursor.fetchone()
+
+        if not user:
+            return JsonResponse({"error": "User not found"}, status=404)
+
+        admin_id, full_name, email = user
+
+        return JsonResponse({
+            "admin_id": admin_id,
+            "full_name": full_name,
+            "email": email
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+
+# =====================================================
+# ✅ PROFILE UPDATE (THIS FIXES YOUR ERROR)
+# =====================================================
+@csrf_exempt
+def profile_update(request, email):
+    if request.method not in ["PUT", "POST"]:
+        return JsonResponse({"error": "Only PUT/POST allowed"}, status=400)
+
+    try:
+        data = json.loads(request.body.decode("utf-8"))
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    full_name = data.get("fullName")
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE ad_user
+                SET full_name = %s
+                WHERE email = %s
+                """,
+                [full_name, email]
+            )
+
+        return JsonResponse({"message": "Profile updated successfully"})
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
