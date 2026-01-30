@@ -169,3 +169,11 @@ def profile_update(request, email):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+def get_admin_school(admin_id=None):
+    """
+    Temporary helper function to fix import errors.
+    Replace with real logic later.
+    """
+    return None
+
+
