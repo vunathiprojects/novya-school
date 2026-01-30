@@ -1,4 +1,5 @@
 from django.urls import path
+from .views import signup, login, profile_get
 
 # =========================
 # IMPORT AUTH & PROFILE VIEWS
@@ -49,6 +50,9 @@ urlpatterns = [
     # =========================
     #path("signup/", signup, name="signup"),
     #path("login/", login, name="login"),
+    path("signup/", signup),
+    path("login/", login),
+    path("profile/", profile_get),
     path("signup/", views.signup),
     path("login/", views.login),
     
