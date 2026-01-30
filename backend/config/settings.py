@@ -9,18 +9,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY
 # =========================================================
 SECRET_KEY = "CHANGE_THIS_TO_A_SECURE_KEY"
-DEBUG = True   # ⚠️ Set False in production
+DEBUG = True  # ⚠️ Set False in production
 
 ALLOWED_HOSTS = [
     "54.211.37.202",
     "localhost",
     "127.0.0.1",
-    "Novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com ",
+    "novya-school-ebk-env.eba-uj5qefsc.us-east-1.elasticbeanstalk.com",
     "novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
-    "*",
-    
 ]
-
 
 # =========================================================
 # APPLICATIONS
@@ -39,7 +36,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
 
-    # Local
+    # Local apps
     "accounts",
 ]
 
@@ -113,7 +110,7 @@ USE_I18N = True
 USE_TZ = True
 
 # =========================================================
-# STATIC FILES
+# STATIC & MEDIA FILES
 # =========================================================
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -147,9 +144,14 @@ SIMPLE_JWT = {
 }
 
 # =========================================================
-# CORS CONFIG  ✅ (FIXED)
+# ✅ CORS CONFIG (FIXED)
 # =========================================================
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
+
+CORS_ALLOWED_ORIGINS = [
+    "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
+]
+
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_HEADERS = list(default_headers) + [
@@ -160,7 +162,7 @@ CORS_ALLOW_HEADERS = list(default_headers) + [
 CORS_ALLOW_METHODS = list(default_methods)
 
 # =========================================================
-# CSRF CONFIG
+# ✅ CSRF CONFIG (FIXED)
 # =========================================================
 CSRF_TRUSTED_ORIGINS = [
     "http://novyaschooladmins3.s3-website-us-east-1.amazonaws.com",
@@ -174,9 +176,7 @@ LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
     "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-        },
+        "console": {"class": "logging.StreamHandler"},
     },
     "root": {
         "handlers": ["console"],
