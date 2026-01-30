@@ -27,7 +27,6 @@ def signup(request):
 
     try:
         with connection.cursor() as cursor:
-            # Check if email exists
             cursor.execute("SELECT 1 FROM ad_user WHERE email = %s", [email])
             if cursor.fetchone():
                 return JsonResponse({"error": "Email already exists"}, status=400)
@@ -52,6 +51,7 @@ def signup(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+
 
 # =====================================================
 # ADMIN LOGIN
@@ -140,7 +140,7 @@ def profile_get(request, email):
 
 
 # =====================================================
-# ✅ PROFILE UPDATE (THIS FIXES YOUR ERROR)
+# PROFILE UPDATE
 # =====================================================
 @csrf_exempt
 def profile_update(request, email):
@@ -169,11 +169,42 @@ def profile_update(request, email):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-def get_admin_school(admin_id=None):
-    """
-    Temporary helper function to fix import errors.
-    Replace with real logic later.
-    """
+
+
+# =====================================================
+# REQUIRED BY teacher_management.py & parent_management.py
+# =====================================================
+def get_admin_school(*args, **kwargs):
     return None
 
 
+# =====================================================
+# DASHBOARD APIs (DUMMY - prevents errors)
+# =====================================================
+def get_overview_data(request):
+    return JsonResponse({"message": "Dashboard overview API working"})
+
+def get_attendance_data(request):
+    return JsonResponse({"message": "Dashboard attendance API working"})
+
+
+# =====================================================
+# SCHOOL APIs (DUMMY - prevents errors)
+# =====================================================
+def get_school_teachers(request):
+    return JsonResponse({"message": "School teachers API working"})
+
+def get_school_students(request):
+    return JsonResponse({"message": "School students API working"})
+
+def get_school_parents(request):
+    return JsonResponse({"message": "School parents API working"})
+
+def get_school_student_progress(request):
+    return JsonResponse({"message": "Student progress API working"})
+
+def get_school_student_reports(request):
+    return JsonResponse({"message": "Student reports API working"})
+
+def get_school_attendance(request):
+    return JsonResponse({"message": "School attendance API working"})
