@@ -5,6 +5,12 @@ from django.db import connection
 from django.contrib.auth.hashers import make_password, check_password
 
 
+def dictfetchone(cursor):
+    desc = [col[0] for col in cursor.description]
+    row = cursor.fetchone()
+    return dict(zip(desc, row)) if row else None
+
+
 # =====================================================
 # ADMIN SIGNUP
 # =====================================================
@@ -41,13 +47,9 @@ def signup(request):
                 """,
                 [full_name, email, hashed_password]
             )
-
             admin_id = cursor.fetchone()[0]
 
-        return JsonResponse(
-            {"message": "Signup successful", "admin_id": admin_id},
-            status=201
-        )
+        return JsonResponse({"message": "Signup successful", "admin_id": admin_id}, status=201)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -76,7 +78,7 @@ def login(request):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT admin_id, full_name, password
+                SELECT admin_id, full_name, password, phone, school_name, school_address
                 FROM ad_user
                 WHERE email = %s AND is_active = TRUE
                 """,
@@ -87,52 +89,58 @@ def login(request):
         if not user:
             return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-        admin_id, full_name, hashed_password = user
+        admin_id, full_name, hashed_password, phone, school_name, school_address = user
 
         if not check_password(password, hashed_password):
             return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-        return JsonResponse(
-            {
-                "message": "Login successful",
-                "admin": {
-                    "admin_id": admin_id,
-                    "full_name": full_name,
-                    "email": email
-                }
-            },
-            status=200
-        )
+        return JsonResponse({
+            "message": "Login successful",
+            "admin": {
+                "admin_id": admin_id,
+                "fullName": full_name,
+                "email": email,
+                "phone": phone,
+                "schoolName": school_name,
+                "schoolAddress": school_address,
+            }
+        }, status=200)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
 
 # =====================================================
-# PROFILE GET
+# PROFILE GET (BY EMAIL QUERY PARAM)
 # =====================================================
-def profile_get(request, email):
+def profile_get(request):
+    email = request.GET.get("email")
+
+    if not email:
+        return JsonResponse({"error": "Email is required"}, status=400)
+
     try:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT admin_id, full_name, email
+                SELECT admin_id, full_name, email, phone, school_name, school_address
                 FROM ad_user
                 WHERE email = %s
                 """,
                 [email]
             )
-            user = cursor.fetchone()
+            user = dictfetchone(cursor)
 
         if not user:
             return JsonResponse({"error": "User not found"}, status=404)
 
-        admin_id, full_name, email = user
-
         return JsonResponse({
-            "admin_id": admin_id,
-            "full_name": full_name,
-            "email": email
+            "admin_id": user["admin_id"],
+            "fullName": user["full_name"],
+            "email": user["email"],
+            "phone": user["phone"],
+            "schoolName": user["school_name"],
+            "schoolAddress": user["school_address"],
         })
 
     except Exception as e:
@@ -140,10 +148,10 @@ def profile_get(request, email):
 
 
 # =====================================================
-# PROFILE UPDATE
+# PROFILE UPDATE ✅ (THIS FIXES YOUR ERROR)
 # =====================================================
 @csrf_exempt
-def profile_update(request, email):
+def profile_update(request):
     if request.method not in ["PUT", "POST"]:
         return JsonResponse({"error": "Only PUT/POST allowed"}, status=400)
 
@@ -152,59 +160,34 @@ def profile_update(request, email):
     except Exception:
         return JsonResponse({"error": "Invalid JSON"}, status=400)
 
+    email = data.get("email")
     full_name = data.get("fullName")
+    phone = data.get("phone")
+    school_name = data.get("schoolName")
+    school_address = data.get("schoolAddress")
+
+    if not email:
+        return JsonResponse({"error": "Email is required"}, status=400)
 
     try:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE ad_user
-                SET full_name = %s
+                SET 
+                    full_name = COALESCE(%s, full_name),
+                    phone = COALESCE(%s, phone),
+                    school_name = COALESCE(%s, school_name),
+                    school_address = COALESCE(%s, school_address)
                 WHERE email = %s
                 """,
-                [full_name, email]
+                [full_name, phone, school_name, school_address, email]
             )
 
-        return JsonResponse({"message": "Profile updated successfully"})
+            if cursor.rowcount == 0:
+                return JsonResponse({"error": "User not found"}, status=404)
+
+        return JsonResponse({"message": "Profile updated successfully"}, status=200)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
-
-# =====================================================
-# REQUIRED BY teacher_management.py & parent_management.py
-# =====================================================
-def get_admin_school(*args, **kwargs):
-    return None
-
-
-# =====================================================
-# DASHBOARD APIs (DUMMY - prevents errors)
-# =====================================================
-def get_overview_data(request):
-    return JsonResponse({"message": "Dashboard overview API working"})
-
-def get_attendance_data(request):
-    return JsonResponse({"message": "Dashboard attendance API working"})
-
-
-# =====================================================
-# SCHOOL APIs (DUMMY - prevents errors)
-# =====================================================
-def get_school_teachers(request):
-    return JsonResponse({"message": "School teachers API working"})
-
-def get_school_students(request):
-    return JsonResponse({"message": "School students API working"})
-
-def get_school_parents(request):
-    return JsonResponse({"message": "School parents API working"})
-
-def get_school_student_progress(request):
-    return JsonResponse({"message": "Student progress API working"})
-
-def get_school_student_reports(request):
-    return JsonResponse({"message": "Student reports API working"})
-
-def get_school_attendance(request):
-    return JsonResponse({"message": "School attendance API working"})
