@@ -6,7 +6,7 @@ from django.contrib.auth.hashers import make_password, check_password
 
 
 # ============================
-# HELPER
+# HELPERS
 # ============================
 def dictfetchone(cursor):
     desc = [col[0] for col in cursor.description]
@@ -52,7 +52,10 @@ def signup(request):
             )
             admin_id = cursor.fetchone()[0]
 
-        return JsonResponse({"message": "Signup successful", "admin_id": admin_id}, status=201)
+        return JsonResponse(
+            {"message": "Signup successful", "admin_id": admin_id},
+            status=201
+        )
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -81,7 +84,8 @@ def login(request):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT admin_id, full_name, email, password, phone, school_name, school_address
+                SELECT admin_id, full_name, email, password,
+                       phone, school_name, school_address
                 FROM ad_user
                 WHERE email = %s AND is_active = TRUE
                 """,
@@ -114,7 +118,7 @@ def login(request):
 
 
 # ============================
-# PROFILE GET (query param)
+# PROFILE GET (QUERY PARAM)
 # ============================
 def profile_get(request):
     email = request.GET.get("email")
@@ -126,7 +130,8 @@ def profile_get(request):
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT admin_id, full_name, email, phone, school_name, school_address
+                SELECT admin_id, full_name, email,
+                       phone, school_name, school_address
                 FROM ad_user
                 WHERE email = %s
                 """,
@@ -151,12 +156,12 @@ def profile_get(request):
 
 
 # ============================
-# PROFILE UPDATE (AUTO FIX)
+# PROFILE UPDATE (AUTO HEAL)
 # ============================
 @csrf_exempt
 def profile_update(request):
-    if request.method not in ["PUT", "POST"]:
-        return JsonResponse({"error": "Only PUT/POST allowed"}, status=400)
+    if request.method not in ["POST", "PUT"]:
+        return JsonResponse({"error": "Only POST/PUT allowed"}, status=400)
 
     try:
         data = json.loads(request.body.decode("utf-8"))
@@ -180,7 +185,7 @@ def profile_update(request):
             cursor.execute(
                 """
                 UPDATE ad_user
-                SET 
+                SET
                     full_name = COALESCE(%s, full_name),
                     phone = COALESCE(%s, phone),
                     school_name = %s,
@@ -200,7 +205,7 @@ def profile_update(request):
 
 
 # ============================
-# ADMIN → SCHOOL (FIXED)
+# ADMIN → SCHOOL (CRITICAL)
 # ============================
 def get_admin_school(email):
     with connection.cursor() as cursor:
@@ -216,17 +221,41 @@ def get_admin_school(email):
         )
         row = cursor.fetchone()
 
-    if row:
-        return {
-            "school_name": row[0],
-            "school_address": row[1],
-        }
+    if not row:
+        return None
 
-    return None
+    return {
+        "school_name": row[0],
+        "school_address": row[1],
+    }
 
 
 # ============================
-# DUMMY APIs (SAFE)
+# TEACHER REGISTRATIONS (FIXED)
+# ============================
+def get_teacher_registrations(request):
+    admin_email = request.GET.get("admin_email")
+
+    if not admin_email:
+        return JsonResponse({"error": "admin_email is required"}, status=400)
+
+    school = get_admin_school(admin_email)
+
+    if not school:
+        return JsonResponse(
+            {"error": "Admin school not found"},
+            status=400
+        )
+
+    # No teacher table yet – return empty list safely
+    return JsonResponse({
+        "school_name": school["school_name"],
+        "teachers": []
+    })
+
+
+# ============================
+# SAFE DUMMY APIS
 # ============================
 def get_overview_data(request):
     return JsonResponse({"message": "ok"})
