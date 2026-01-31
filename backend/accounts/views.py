@@ -5,6 +5,9 @@ from django.db import connection
 from django.contrib.auth.hashers import make_password, check_password
 
 
+# ============================
+# HELPER
+# ============================
 def dictfetchone(cursor):
     desc = [col[0] for col in cursor.description]
     row = cursor.fetchone()
@@ -148,7 +151,7 @@ def profile_get(request):
 
 
 # ============================
-# PROFILE UPDATE ✅
+# PROFILE UPDATE (AUTO FIX)
 # ============================
 @csrf_exempt
 def profile_update(request):
@@ -169,6 +172,9 @@ def profile_update(request):
     if not email:
         return JsonResponse({"error": "Email is required"}, status=400)
 
+    if not school_name:
+        return JsonResponse({"error": "School name is required"}, status=400)
+
     try:
         with connection.cursor() as cursor:
             cursor.execute(
@@ -177,8 +183,8 @@ def profile_update(request):
                 SET 
                     full_name = COALESCE(%s, full_name),
                     phone = COALESCE(%s, phone),
-                    school_name = COALESCE(%s, school_name),
-                    school_address = COALESCE(%s, school_address)
+                    school_name = %s,
+                    school_address = %s
                 WHERE email = %s
                 """,
                 [full_name, phone, school_name, school_address, email]
@@ -193,25 +199,35 @@ def profile_update(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# REQUIRED for other modules
-def get_admin_school(*args, **kwargs):
-    return None
+# ============================
+# ADMIN → SCHOOL (FIXED)
+# ============================
 def get_admin_school(email):
-    from django.db import connection
-
     with connection.cursor() as cursor:
         cursor.execute(
-            "SELECT school_name FROM ad_user WHERE email = %s",
+            """
+            SELECT school_name, school_address
+            FROM ad_user
+            WHERE email = %s
+              AND school_name IS NOT NULL
+              AND school_name <> ''
+            """,
             [email]
         )
         row = cursor.fetchone()
 
     if row:
-        return row[0]
+        return {
+            "school_name": row[0],
+            "school_address": row[1],
+        }
 
     return None
 
-# Dummy APIs to avoid errors
+
+# ============================
+# DUMMY APIs (SAFE)
+# ============================
 def get_overview_data(request):
     return JsonResponse({"message": "ok"})
 
