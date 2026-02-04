@@ -1,4 +1,4 @@
-import os
+import og
 from pathlib import Path
 from datetime import timedelta
 from corsheaders.defaults import default_headers, default_methods
